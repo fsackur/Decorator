@@ -11,38 +11,34 @@ class DecoratorException : Exception
 
 class DecorateAttribute : Attribute
 {
-    # no parameterisation
-    DecorateAttribute ([string]$DecoratorName)
+    DecorateAttribute ([scriptblock]$Decorator)
     {
-        try
-        {
-            # hard to predict what will happen at runtime; no syntax help
-            $Dec = Get-Command $DecoratorName -ErrorAction Stop
-        }
-        catch [CommandNotFoundException]
-        {
-            # This is silently swallowed at parse time
-            throw [DecoratorException]::new("Could not find decorator command '$DecoratorName'.", $_.Exception)
-        }
-        if ($Dec.Count -gt 1)
-        {
-            throw [DecoratorException]::new("Multiple commands found matching decorator name '$DecoratorName'.")
-        }
-
-        $this.Decorator = $Dec
+        # Could potentially validate the decorator here
+        # Pipe the decorated command in, presumably
+        # Then, this scriptblock replaces the decorated command somehow..?
+        $this.Decorator = $Decorator
     }
 
-    [CommandInfo]$Decorator
+    [scriptblock]$Decorator
 }
 
 
 function Dec
-{}
+{
+    param
+    (
+        [CommandInfo]$DecoratedCommand,
+
+        $ExtraParam
+    )
+
+    & $DecoratedCommand
+}
 
 
 function SUT
 {
-    [Decorate('Dec')]
+    [Decorate({Dec -ExtraParam 42})]
     [CmdletBinding()]
     param
     (
@@ -55,7 +51,7 @@ function SUT
 
 function Get-Decorator
 {
-    [OutputType([CommandInfo])]
+    [OutputType([scriptblock])]
     [CmdletBinding()]
     param
     (
