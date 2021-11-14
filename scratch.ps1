@@ -3,22 +3,47 @@ using namespace System.Management.Automation
 # https://huddledmasses.org/2020/03/empowering-your-pwsh-with-attributes/
 # https://powershell.one/powershell-internals/attributes/custom-attributes
 
-
-class DecoratedCmdletBindingAttribute : CmdletBindingAttribute
+class DecoratorException : Exception
 {
-    [scriptblock]$InjectParams
+    DecoratorException([string]$Message) : base($Message) {}
+    DecoratorException([string]$Message, [Exception]$InnerException) : base($Message, $InnerException) {}
 }
+
+class DecorateAttribute : Attribute
+{
+    # no parameterisation
+    DecorateAttribute ([string]$DecoratorName)
+    {
+        try
+        {
+            # hard to predict what will happen at runtime; no syntax help
+            $Dec = Get-Command $DecoratorName -ErrorAction Stop
+        }
+        catch [CommandNotFoundException]
+        {
+            # This is silently swallowed at parse time
+            throw [DecoratorException]::new("Could not find decorator command '$DecoratorName'.", $_.Exception)
+        }
+        if ($Dec.Count -gt 1)
+        {
+            throw [DecoratorException]::new("Multiple commands found matching decorator name '$DecoratorName'.")
+        }
+
+        $this.Decorator = $Dec
+    }
+
+    [CommandInfo]$Decorator
+}
+
+
+function Dec
+{}
 
 
 function SUT
 {
-    [DecoratedCmdletBinding(InjectParams = {
-        param
-        (
-            [Parameter(Position = 0)]
-            $bar
-        )
-    })]
+    [Decorate('Dec')]
+    [CmdletBinding()]
     param
     (
         [Parameter(Position = 0)]
@@ -28,11 +53,9 @@ function SUT
 
 
 
-
-
-function Add-DecoratedParameters
+function Get-Decorator
 {
-    [OutputType([FunctionInfo])]
+    [OutputType([CommandInfo])]
     [CmdletBinding()]
     param
     (
@@ -43,38 +66,20 @@ function Add-DecoratedParameters
 
     process
     {
-        $Attr = $Command.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecoratedCmdletBindingAttribute]})
+        $Attr = $Command.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateAttribute]})
         if (-not $Attr)
         {
-            Write-Debug "Command '$Command' is not decorated with DecoratedCmdletBinding."
-            return $Command
+            Write-Debug "Command '$Command' is not decorated."
+            return
         }
 
-        if (-not $Attr.InjectParams)
-        {
-            Write-Debug "Command '$Command' has no injection parameters specified in DecoratedCmdletBinding."
-            return $Command
-        }
+        Write-Debug "Command '$Command' is decorated."
 
-        Write-Debug "Command '$Command' is decorated with DecoratedCmdletBinding."
+        $Decorator = $Attr.Decorator
 
-        $InjectBlock = $Attr.InjectParams
-        $NewParams = $InjectBlock.Ast.ParamBlock.Parameters
-
-        if (-not $NewParams)
-        {
-            Write-Debug "Command '$Command' has no injection parameters specified in DecoratedCmdletBinding."
-            return $Command
-        }
-
-        $SubjectParams = $Command.ScriptBlock.Ast.Body.ParamBlock.Parameters
-
-        Write-Debug "Starting parameters:"
-        $SubjectParams | Out-String | Write-Debug
-
-        Write-Debug "Injecting parameters:"
-        $NewParams | Out-String | Write-Debug
-
-        return $Command
+        return $Decorator
     }
 }
+
+
+gcm SUT | Get-Decorator -Debug
