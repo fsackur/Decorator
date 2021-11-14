@@ -1,0 +1,21 @@
+{
+    "files.eol": "\n",      // Just feels wrong supporting Linux and having CRLF endings...
+    "files.trimFinalNewlines": true,
+    "files.trimTrailingWhitespace": true,
+    "powershell.codeFormatting.addWhitespaceAroundPipe": true,
+    "powershell.codeFormatting.alignPropertyValuePairs": true,
+    "powershell.codeFormatting.autoCorrectAliases": true,
+    "powershell.codeFormatting.ignoreOneLineBlock": true,
+    "powershell.codeFormatting.newLineAfterCloseBrace": true,
+    "powershell.codeFormatting.openBraceOnSameLine": false,
+    "powershell.codeFormatting.pipelineIndentationStyle": "IncreaseIndentationForFirstPipeline",
+    "powershell.codeFormatting.preset": "Allman",
+    "powershell.codeFormatting.useConstantStrings": true,
+    "powershell.codeFormatting.useCorrectCasing": true,
+    "powershell.codeFormatting.whitespaceAfterSeparator": true,
+    "powershell.codeFormatting.whitespaceAroundOperator": true,
+    "powershell.codeFormatting.whitespaceBeforeOpenBrace": true,
+    "powershell.codeFormatting.whitespaceBeforeOpenParen": true,
+    "powershell.codeFormatting.whitespaceBetweenParameters": true,
+    "powershell.codeFormatting.whitespaceInsideBrace": false,
+}
