@@ -28,11 +28,10 @@ function Dec
     [CmdletBinding()]
     param
     (
-        [CommandInfo]$DecoratedCommand,
         $ExtraParam
     )
 
-    & $DecoratedCommand
+    $Decorated
 }
 
 
@@ -112,14 +111,11 @@ function Update-Function
         $Decorator = $Command | Get-Decorator
 
         $Decorator = & {
-            $Command = $Command
-            $PSDefaultParameterValues = $PSDefaultParameterValues.Clone()
-            # Will need to parse AST to get the decorator and param names
-            $PSDefaultParameterValues['Dec:DecoratedCommand'] = $Command
+            # Doesn't work. $Decorated is in scope in the declaration of the decorator - in the Decorate attr - but not in the original scope of the decorator
+            $Decorated = $Command
             $Decorator.GetNewClosure()
         }
 
-        # Doesn't work. This Update method is an in-place update - so, infinite recursion
         $UpdateMethod.Invoke(
             $Command,
             (
