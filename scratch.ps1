@@ -25,10 +25,10 @@ class DecorateAttribute : Attribute
 
 function Dec
 {
+    [CmdletBinding()]
     param
     (
         [CommandInfo]$DecoratedCommand,
-
         $ExtraParam
     )
 
@@ -38,13 +38,21 @@ function Dec
 
 function SUT
 {
-    [Decorate({Dec -ExtraParam 42})]
+    [Decorate({
+        Dec -ExtraParam 42
+    })]
     [CmdletBinding()]
     param
     (
         [Parameter(Position = 0)]
         $foo
     )
+
+    if ($ExtraParam)
+    {
+        return $foo, $ExtraParam -join ':'
+    }
+    return $foo
 }
 
 
@@ -77,5 +85,59 @@ function Get-Decorator
     }
 }
 
+function Update-Function
+{
+    [OutputType([void])]
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
+        [Alias('InputObject')]
+        [FunctionInfo]$Command
+    )
 
-gcm SUT | Get-Decorator -Debug
+    begin
+    {
+        $UpdateMethod = [FunctionInfo].GetMethod(
+            'Update',
+            ([Reflection.BindingFlags]'Nonpublic, Instance'),
+            [type[]]([scriptblock], [bool], [ScopedItemOptions], [string])
+        )
+    }
+
+    process
+    {
+        $Force = $true
+
+        $Decorator = $Command | Get-Decorator
+
+        $Decorator = & {
+            $Command = $Command
+            $PSDefaultParameterValues = $PSDefaultParameterValues.Clone()
+            # Will need to parse AST to get the decorator and param names
+            $PSDefaultParameterValues['Dec:DecoratedCommand'] = $Command
+            $Decorator.GetNewClosure()
+        }
+
+        # Doesn't work. This Update method is an in-place update - so, infinite recursion
+        $UpdateMethod.Invoke(
+            $Command,
+            (
+                $Decorator,
+                $Force,
+                $Command.Options,
+                ([string]$Command.HelpFile)
+            )
+        )
+    }
+}
+
+
+$SUT = gcm SUT
+$Dec = $SUT | Get-Decorator -Debug
+
+SUT 12
+
+Update-Function $SUT
+
+SUT 12
