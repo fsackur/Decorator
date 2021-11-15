@@ -1,6 +1,8 @@
 {
+    "files.encoding": "utf8",
     "files.eol": "\n",      // Just feels wrong supporting Linux and having CRLF endings...
     "files.trimFinalNewlines": true,
+    "files.insertFinalNewline": true,
     "files.trimTrailingWhitespace": true,
     "powershell.codeFormatting.addWhitespaceAroundPipe": true,
     "powershell.codeFormatting.alignPropertyValuePairs": true,
