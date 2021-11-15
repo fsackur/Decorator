@@ -7,6 +7,9 @@ function Decorator
 
 function CmdToWrap
 {
+    [Decorate({
+        Decorator
+    })]
     [CmdletBinding()]
     param ()
 
