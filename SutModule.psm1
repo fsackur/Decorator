@@ -1,9 +1,7 @@
 
 function SUT
 {
-    [Decorate({
-        Decorator
-    })]
+    [Decorate({Decorator})]
     [CmdletBinding()]
     param
     (

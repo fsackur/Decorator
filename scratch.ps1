@@ -13,9 +13,6 @@ class DecorateAttribute : Attribute
 {
     DecorateAttribute ([scriptblock]$Decorator)
     {
-        # Could potentially validate the decorator here
-        # Pipe the decorated command in, presumably
-        # Then, this scriptblock replaces the decorated command somehow..?
         $this.Decorator = $Decorator
     }
 
@@ -79,21 +76,16 @@ function Update-Function
 
         $Decorator = $SUT | Get-Decorator
 
-        $Decorator = & {
-            # Doesn't work. $Decorated is in scope in the declaration of the decorator - in the Decorate attr - but not in the original scope of the decorator
-            $Decorated = $SUT
-            $Decorator.GetNewClosure()
-        }
-
-        $UpdateMethod.Invoke(
-            $Command,
-            (
-                $Decorator,
-                $Force,
-                $Command.Options,
-                ([string]$Command.HelpFile)
-            )
-        )
+        $UpdateMethod
+        # $UpdateMethod.Invoke(
+        #     $Command,
+        #     (
+        #         $Decorator,
+        #         $Force,
+        #         $Command.Options,
+        #         ([string]$Command.HelpFile)
+        #     )
+        # )
     }
 }
 
@@ -104,5 +96,4 @@ Join-Path $PSScriptRoot SutModule.psm1 | ipmo -Force
 
 $SUT = gcm SUT
 $Decorator = $SUT | Get-Decorator
-
 Update-Function $SUT
