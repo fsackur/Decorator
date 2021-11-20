@@ -23,38 +23,6 @@ class DecorateAttribute : Attribute
 }
 
 
-function Dec
-{
-    [CmdletBinding()]
-    param
-    (
-        $ExtraParam
-    )
-
-    $Decorated
-}
-
-
-function SUT
-{
-    [Decorate({
-        Dec -ExtraParam 42
-    })]
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(Position = 0)]
-        $foo
-    )
-
-    if ($ExtraParam)
-    {
-        return $foo, $ExtraParam -join ':'
-    }
-    return $foo
-}
-
-
 
 function Get-Decorator
 {
@@ -92,7 +60,8 @@ function Update-Function
     (
         [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
         [Alias('InputObject')]
-        [FunctionInfo]$Command
+        [Alias('Command')]
+        [FunctionInfo]$SUT
     )
 
     begin
@@ -108,11 +77,11 @@ function Update-Function
     {
         $Force = $true
 
-        $Decorator = $Command | Get-Decorator
+        $Decorator = $SUT | Get-Decorator
 
         $Decorator = & {
             # Doesn't work. $Decorated is in scope in the declaration of the decorator - in the Decorate attr - but not in the original scope of the decorator
-            $Decorated = $Command
+            $Decorated = $SUT
             $Decorator.GetNewClosure()
         }
 
@@ -129,11 +98,11 @@ function Update-Function
 }
 
 
-$SUT = gcm SUT
-$Dec = $SUT | Get-Decorator -Debug
 
-SUT 12
+Join-Path $PSScriptRoot DecModule.psm1 | ipmo -Force
+Join-Path $PSScriptRoot SutModule.psm1 | ipmo -Force
+
+$SUT = gcm SUT
+$Decorator = $SUT | Get-Decorator
 
 Update-Function $SUT
-
-SUT 12
