@@ -68,6 +68,13 @@ function Update-Function
             ([Reflection.BindingFlags]'Nonpublic, Instance'),
             [type[]]([scriptblock], [bool], [ScopedItemOptions], [string])
         )
+
+        # Following references in the source code shows that this is called by the FunctionProvider. So:
+        # function foo {23}; $f1 = gcm foo; $Field.SetValue($f1, {42}); $f2 = gcm foo; $f1 -eq $f2
+        # True
+        # but also:
+        # function foo {23}; $f1 = gcm foo; Set-Item Function:\foo {42}; $f2 = gcm foo; $f1 -eq $f2
+        # True
     }
 
     process
