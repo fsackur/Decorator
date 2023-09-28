@@ -22,69 +22,15 @@ class DecoratedCommand
     hidden static [Management.Automation.CommandInfo]$_decoratedCommand = $null
     # hidden static [scriptblock]$_decoratedCommand = $null
 
-    # static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_args)
-    # {
-    #     return Invoke($null, @{}, $_args, $false)
-    # }
-
-    # static [Collections.ObjectModel.Collection[psobject]] Invoke([Collections.IDictionary]$_PSBoundParameters)
-    # {
-    #     return Invoke($null, $_PSBoundParameters, @(), $false)
-    # }
-
-    # static [Collections.ObjectModel.Collection[psobject]] Invoke([Collections.IDictionary]$_PSBoundParameters, [object[]]$_args)
-    # {
-    #     return Invoke($null, $_PSBoundParameters, $_args, $false)
-    # }
-
-    # static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [Collections.IDictionary]$_PSBoundParameters)
-    # {
-    #     return Invoke($_input, $_PSBoundParameters, @(), $true)
-    # }
-
-    # static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [object[]]$_args)
-    # {
-    #     return Invoke($_input, @{}, $_args, $true)
-    # }
-
-    # static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [Collections.IDictionary]$_PSBoundParameters, [object[]]$_args)
-    # {
-    #     return Invoke($_input, $_PSBoundParameters, $_args, $true)
-    # }
-
-    # hidden static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [Collections.IDictionary]$_PSBoundParameters, [object[]]$_args, [bool]$ShouldPipe)
-    # {
-    #     # $Decorator = (Get-PSCallStack)[1].InvocationInfo.MyCommand
-    #     # $Decorated = $Decorator.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateWithAttribute]})
-    #     # & $Decorated.Decorated
-    #     $DecoratedCommand = [DecoratedCommand]::_decoratedCommand
-    #     [DecoratedCommand]::_decoratedCommand = $null
-    #     return if ($ShouldPipe)
-    #     {
-    #         $_input | & $DecoratedCommand @_PSBoundParameters @_args
-    #     }
-    #     else
-    #     {
-    #         & $DecoratedCommand @_PSBoundParameters @_args
-    #     }
-    # }
-
-    static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [Collections.IDictionary]$_PSBoundParameters, [object[]]$_args)
+    [Diagnostics.CodeAnalysis.SuppressMessage("PSAvoidAssignmentToAutomaticVariable", "")]
+    static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [object[]]$_args)
     {
-        $Caller = (Get-PSCallStack)[1]
-        $ShouldPipe = $Caller.InvocationInfo.ExpectingInput
+        # $Decorator = (Get-PSCallStack)[1].InvocationInfo.MyCommand
         # $Decorated = $Decorator.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateWithAttribute]})
         # & $Decorated.Decorated
         $DecoratedCommand = [DecoratedCommand]::_decoratedCommand
         [DecoratedCommand]::_decoratedCommand = $null
-        if ($ShouldPipe)
-        {
-            return $_input | & $DecoratedCommand @_PSBoundParameters @_args
-        }
-        else
-        {
-            return & $DecoratedCommand @_PSBoundParameters @_args
-        }
+        return $_input | & $DecoratedCommand @_args
     }
 
     static [Management.Automation.RuntimeDefinedParameterDictionary] GetParameters()
@@ -231,14 +177,7 @@ function Initialize-Decorator
                     end
                     {
                         [DecoratedCommand]::_decoratedCommand = $OriginalCommand
-                        if ($MyInvocation.ExpectingInput)
-                        {
-                            $input | & $Decorator @args
-                        }
-                        else
-                        {
-                            & $Decorator @args
-                        }
+                        $input | & $Decorator @args
                     }
                 }
             }
@@ -246,14 +185,7 @@ function Initialize-Decorator
             {
                 {
                     [DecoratedCommand]::_decoratedCommand = $OriginalCommand
-                    if ($MyInvocation.ExpectingInput)
-                    {
-                        $input | & $Decorator @args
-                    }
-                    else
-                    {
-                        & $Decorator @args
-                    }
+                    $input | & $Decorator @args
                 }
             }
 

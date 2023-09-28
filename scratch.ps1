@@ -97,27 +97,6 @@ function Update-Function
 }
 
 
-function Has-DynamicParams
-{
-    [DecorateWithAttribute("Add-Logging")]
-    [CmdletBinding()]
-    param ()
-
-    dynamicparam
-    {
-        $DynParams = [Management.Automation.RuntimeDefinedParameterDictionary]::new()
-        $DynParam = [Management.Automation.RuntimeDefinedParameter]::new(
-            "foo",
-            [object],
-            [Management.Automation.ParameterAttribute]::new()
-        )
-        $DynParams.Add($DynParam.Name, $DynParam)
-        $DynParams
-    }
-
-    end {$PSBoundParameters.foo}
-}
-
 
 Join-Path $PSScriptRoot DecModule.psm1 | ipmo -Force
 Join-Path $PSScriptRoot SutModule.psm1 | ipmo -Force
