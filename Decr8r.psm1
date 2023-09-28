@@ -2,7 +2,8 @@
 class DecoratedCommand
 {
     hidden static [Collections.Generic.ISet[Management.Automation.CommandInfo]]$_decoratedCommands = [Collections.Generic.HashSet[Management.Automation.CommandInfo]]::new()
-    hidden static [Management.Automation.CommandInfo]$_decoratedCommand = $null
+    # hidden static [Management.Automation.CommandInfo]$_decoratedCommand = $null
+    hidden static [scriptblock]$_decoratedCommand = $null
 
     [Diagnostics.CodeAnalysis.SuppressMessage("PSAvoidAssignmentToAutomaticVariable", "")]
     static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]] $_args)
@@ -25,7 +26,7 @@ class DecorateWithAttribute : Attribute
         # $this.Decorator = Get-Command $DecoratorName
         # $this.Decorator | ft | os | write-host -ForegroundColor DarkGray
         # [DecoratedCommand]::_decoratedCommand = $this.Decorator
-        $this.$DecoratorName = $DecoratorName
+        $this.DecoratorName = $DecoratorName
     }
 
     [Management.Automation.CommandInfo]$Decorator
@@ -72,46 +73,32 @@ function Initialize-Decorator
     #     }
     # }
     Write-Host "In Initialize-Decorator" -ForegroundColor DarkGray
-    Get-Command -Module $SessionState.Module | ft | os | write-host     # if we call from the .psm1, the functions haven't been exported yet and this returns $null
+    # Get-Command -Module $SessionState.Module | ft | os | write-host     # if we call from the .psm1, the functions haven't been exported yet and this returns $null
 
     # So, use reflection to get the internal table
     $iss = [Management.Automation.SessionState].GetField('_sessionState', ([Reflection.BindingFlags]'Nonpublic, Instance')).GetValue($SessionState)
     $FunctionTable = $iss.GetType().GetMethod('GetFunctionTable', ([Reflection.BindingFlags]'Nonpublic, Instance')).Invoke($iss, @())
 
     $ModuleFunctions = $FunctionTable.Values.Where({$_.Module -eq $SessionState.Module})
-    $DecoratedFunctions = $ModuleFunctions.Where({$_.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateWithAttribute]})})
+    # Attributes are lazy-instantiated, so not in .ScriptBlock.Attributes yet
+    $DecoratedFunctions = $ModuleFunctions.Where({$_.ScriptBlock.Ast.Body.ParamBlock.Attributes.TypeName.FullName -eq [DecorateWithAttribute].FullName})
 
-    $DecoratedFunctions | ft | os | write-host
-    $DecoratedFunctions | Update-Function
-}
-
-function Update-Function
-{
-    [OutputType([void])]
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
-        [Alias('InputObject')]
-        [Alias('Command')]
-        [Management.Automation.FunctionInfo]$DecoratedFunction
+    $UpdateMethod = [Management.Automation.FunctionInfo].GetMethod(
+        'Update',
+        ([Reflection.BindingFlags]'Nonpublic, Instance'),
+        [type[]]([scriptblock], [bool], [Management.Automation.ScopedItemOptions], [string])
     )
 
-    begin
-    {
-        $UpdateMethod = [Management.Automation.FunctionInfo].GetMethod(
-            'Update',
-            ([Reflection.BindingFlags]'Nonpublic, Instance'),
-            [type[]]([scriptblock], [bool], [Management.Automation.ScopedItemOptions], [string])
-        )
-    }
-
-    process
-    {
-        $DecoratorAttribute = $DecoratedFunction.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateWithAttribute]})
-        $Decorator = $DecoratorAttribute.Decorator
+    # $DecoratedFunctions | ft | os | write-host
+    $DecoratedFunctions | % {
+        $DecoratedFunction = $_
+        Write-Host "Updating function: $DecoratedFunction" -ForegroundColor DarkGray
+        $DecoratorAttribute = $DecoratedFunction.ScriptBlock.Ast.Body.ParamBlock.Attributes.Where({$_.TypeName.FullName -eq [DecorateWithAttribute].FullName})
+        $DecoratorName = $DecoratorAttribute.PositionalArguments.Value
+        $Decorator = $FunctionTable[$DecoratorName]
+        $OriginalScriptBlock = $DecoratedFunction.ScriptBlock
         $Wrapper = {
-            [DecoratedCommand]::_decoratedCommand = $DecoratedFunction
+            [DecoratedCommand]::_decoratedCommand = $OriginalScriptBlock
             & $Decorator @args
         }.GetNewClosure()
         $UpdateMethod.Invoke(
