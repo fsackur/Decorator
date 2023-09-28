@@ -11,7 +11,7 @@ function Add-Logging
 
     Write-Host "I am logging!" -ForegroundColor Green
 
-    [DecoratedCommand]::Invoke($input, $args)
+    [DecoratedCommand]::Invoke($input, $PSBoundParameters, $args)
 
     Write-Host "I am not logging any more!" -ForegroundColor Green
 }

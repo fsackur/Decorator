@@ -22,15 +22,14 @@ class DecoratedCommand
     hidden static [Management.Automation.CommandInfo]$_decoratedCommand = $null
     # hidden static [scriptblock]$_decoratedCommand = $null
 
-    [Diagnostics.CodeAnalysis.SuppressMessage("PSAvoidAssignmentToAutomaticVariable", "")]
-    static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [object[]]$_args)
+    static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [Collections.IDictionary]$_PSBoundParameters, [object[]]$_args)
     {
         # $Decorator = (Get-PSCallStack)[1].InvocationInfo.MyCommand
         # $Decorated = $Decorator.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateWithAttribute]})
         # & $Decorated.Decorated
         $DecoratedCommand = [DecoratedCommand]::_decoratedCommand
         [DecoratedCommand]::_decoratedCommand = $null
-        return $_input | & $DecoratedCommand @_args
+        return $_input | & $DecoratedCommand @_PSBoundParameters @_args
     }
 
     static [Management.Automation.RuntimeDefinedParameterDictionary] GetParameters()
