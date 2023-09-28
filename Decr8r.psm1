@@ -2,8 +2,8 @@
 class DecoratedCommand
 {
     hidden static [Collections.Generic.ISet[Management.Automation.CommandInfo]]$_decoratedCommands = [Collections.Generic.HashSet[Management.Automation.CommandInfo]]::new()
-    # hidden static [Management.Automation.CommandInfo]$_decoratedCommand = $null
-    hidden static [scriptblock]$_decoratedCommand = $null
+    hidden static [Management.Automation.CommandInfo]$_decoratedCommand = $null
+    # hidden static [scriptblock]$_decoratedCommand = $null
 
     [Diagnostics.CodeAnalysis.SuppressMessage("PSAvoidAssignmentToAutomaticVariable", "")]
     static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [object[]]$_args)
@@ -100,14 +100,21 @@ function Initialize-Decorator
         $DecoratorAttribute = $DecoratedFunction.ScriptBlock.Ast.Body.ParamBlock.Attributes.Where({$_.TypeName.FullName -eq [DecorateWithAttribute].FullName})
         $DecoratorName = $DecoratorAttribute.PositionalArguments.Value
         $Decorator = $FunctionTable[$DecoratorName]
-        $OriginalScriptBlock = $DecoratedFunction.ScriptBlock
+        # $OriginalScriptBlock = $DecoratedFunction.ScriptBlock
+
+        $Ctor = $DecoratedFunction.GetType().GetConstructor([Reflection.BindingFlags]'Nonpublic, Instance', $DecoratedFunction.GetType())
+        $OriginalCommand = $Ctor.Invoke($DecoratedFunction)
+        $RenameMethod = $OriginalCommand.GetType().GetMethod('Rename', [Reflection.BindingFlags]'Nonpublic, Instance', [string])
+        $RenameMethod.Invoke($OriginalCommand, "_decr8r_$($OriginalCommand.Name)")
+
         $Wrapper = & {
             # Create new scope and bring in vars from parent scope - this reduces the size of the closure
-            $OriginalScriptBlock = $OriginalScriptBlock
+            # $OriginalScriptBlock = $OriginalScriptBlock
+            $OriginalCommand = $OriginalCommand
             $Decorator = $Decorator
 
             return {
-                [DecoratedCommand]::_decoratedCommand = $OriginalScriptBlock
+                [DecoratedCommand]::_decoratedCommand = $OriginalCommand
                 $input | & $Decorator @args
             }.GetNewClosure()
         }
