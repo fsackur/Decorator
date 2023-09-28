@@ -83,11 +83,15 @@ function Initialize-Decorator
     # Attributes are lazy-instantiated, so not in .ScriptBlock.Attributes yet
     $DecoratedFunctions = $ModuleFunctions.Where({$_.ScriptBlock.Ast.Body.ParamBlock.Attributes.TypeName.FullName -eq [DecorateWithAttribute].FullName})
 
+    # Private method to update function scriptblock - this is used internally to save regenerating everything
     $UpdateMethod = [Management.Automation.FunctionInfo].GetMethod(
         'Update',
         ([Reflection.BindingFlags]'Nonpublic, Instance'),
         [type[]]([scriptblock], [bool], [Management.Automation.ScopedItemOptions], [string])
     )
+
+    # Internal property to proxy to variables in a scriptblock's scope
+    $SessionStateProperty = [scriptblock].GetProperty('SessionState', ([Reflection.BindingFlags]'Nonpublic, Instance'))
 
     # $DecoratedFunctions | ft | os | write-host
     $DecoratedFunctions | % {
@@ -97,10 +101,21 @@ function Initialize-Decorator
         $DecoratorName = $DecoratorAttribute.PositionalArguments.Value
         $Decorator = $FunctionTable[$DecoratorName]
         $OriginalScriptBlock = $DecoratedFunction.ScriptBlock
-        $Wrapper = {
-            [DecoratedCommand]::_decoratedCommand = $OriginalScriptBlock
-            & $Decorator @args
-        }.GetNewClosure()
+        $Wrapper = & {
+            # Create new scope and bring in vars from parent scope - this reduces the size of the closure
+            $OriginalScriptBlock = $OriginalScriptBlock
+            $Decorator = $Decorator
+
+            return {
+                [DecoratedCommand]::_decoratedCommand = $OriginalScriptBlock
+                & $Decorator @args
+            }.GetNewClosure()
+        }
+        # # Instead of calling .GetNewClosure, we want to only inject the exact variables we need
+        # $WrapperSessionState = $SessionStateProperty.GetValue($Wrapper)
+        # $WrapperSessionState.PSVariable.Set("OriginalScriptBlock", $OriginalScriptBlock)
+        # $WrapperSessionState.PSVariable.Set("Decorator", $Decorator)
+
         $UpdateMethod.Invoke(
             $DecoratedFunction,
             (
