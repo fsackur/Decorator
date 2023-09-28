@@ -2,9 +2,16 @@ using module .\Decr8r.psm1
 
 function Add-Logging
 {
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Position = 0, ValueFromPipeline)]
+        $foo
+    )
+
     Write-Host "I am logging!" -ForegroundColor Green
 
-    [DecoratedCommand]::Invoke($args)
+    [DecoratedCommand]::Invoke($input, $args)
 
     Write-Host "I am not logging any more!" -ForegroundColor Green
 }
@@ -15,11 +22,14 @@ function SUT
     [CmdletBinding()]
     param
     (
-        [Parameter(Position = 0)]
+        [Parameter(Position = 0, ValueFromPipeline)]
         $foo
     )
 
-    Write-Host "I am doing a thing: $foo"
+    process
+    {
+        Write-Host "I am doing a thing: $foo"
+    }
 }
 
 # Initialize-Decorator -Context $ExecutionContext

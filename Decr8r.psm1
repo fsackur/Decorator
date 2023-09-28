@@ -6,14 +6,14 @@ class DecoratedCommand
     hidden static [scriptblock]$_decoratedCommand = $null
 
     [Diagnostics.CodeAnalysis.SuppressMessage("PSAvoidAssignmentToAutomaticVariable", "")]
-    static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]] $_args)
+    static [Collections.ObjectModel.Collection[psobject]] Invoke([object[]]$_input, [object[]]$_args)
     {
         # $Decorator = (Get-PSCallStack)[1].InvocationInfo.MyCommand
         # $Decorated = $Decorator.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateWithAttribute]})
         # & $Decorated.Decorated
         $DecoratedCommand = [DecoratedCommand]::_decoratedCommand
         [DecoratedCommand]::_decoratedCommand = $null
-        return & $DecoratedCommand @_args
+        return $_input | & $DecoratedCommand @_args
     }
 }
 
@@ -108,7 +108,7 @@ function Initialize-Decorator
 
             return {
                 [DecoratedCommand]::_decoratedCommand = $OriginalScriptBlock
-                & $Decorator @args
+                $input | & $Decorator @args
             }.GetNewClosure()
         }
         # # Instead of calling .GetNewClosure, we want to only inject the exact variables we need
