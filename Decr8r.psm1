@@ -1,3 +1,20 @@
+# https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_commonparameters
+[string[]]$CommonParameters = (
+    'Verbose',
+    'Debug',
+    'ErrorAction',
+    'WarningAction',
+    'InformationAction',
+    'ErrorVariable',
+    'WarningVariable',
+    'InformationVariable',
+    'OutVariable',
+    'OutBuffer',
+    'PipelineVariable',
+    'WhatIf',
+    'Confirm'
+)
+[Collections.Generic.HashSet[string]]$CommonParameters = [Collections.Generic.HashSet[string]]::new($CommonParameters)
 
 class DecoratedCommand
 {
@@ -14,6 +31,33 @@ class DecoratedCommand
         $DecoratedCommand = [DecoratedCommand]::_decoratedCommand
         [DecoratedCommand]::_decoratedCommand = $null
         return $_input | & $DecoratedCommand @_args
+    }
+
+    static [Management.Automation.RuntimeDefinedParameterDictionary] GetParameters()
+    {
+        return GetParameters([DecoratedCommand]::_decoratedCommand)
+    }
+
+    hidden static [Management.Automation.RuntimeDefinedParameterDictionary] GetParameters([Management.Automation.CommandInfo]$DecoratedCommand)
+    {
+        $DynParams = [Management.Automation.RuntimeDefinedParameterDictionary]::new()
+
+        if ($null -eq $DecoratedCommand)
+        {
+            return $DynParams
+        }
+
+        $OriginalParams = $DecoratedCommand.Parameters.Values | Where-Object {-not $CommonParameters.Contains($_.Name)}
+        $OriginalParams | ForEach-Object {
+            $DynParam = [Management.Automation.RuntimeDefinedParameter]::new(
+                $_.Name,
+                $_.ParameterType,
+                $_.Attributes
+            )
+            $DynParams.Add($_.Name, $DynParam)
+        }
+
+        return $DynParams
     }
 }
 
@@ -89,6 +133,10 @@ function Initialize-Decorator
         ([Reflection.BindingFlags]'Nonpublic, Instance'),
         [type[]]([scriptblock], [bool], [Management.Automation.ScopedItemOptions], [string])
     )
+    $CommandMetadataField = [Management.Automation.FunctionInfo].GetField(
+        '_commandMetadata',
+        ([Reflection.BindingFlags]'Nonpublic, Instance')
+    )
 
     # Internal property to proxy to variables in a scriptblock's scope
     $SessionStateProperty = [scriptblock].GetProperty('SessionState', ([Reflection.BindingFlags]'Nonpublic, Instance'))
@@ -107,22 +155,48 @@ function Initialize-Decorator
         $RenameMethod = $OriginalCommand.GetType().GetMethod('Rename', [Reflection.BindingFlags]'Nonpublic, Instance', [string])
         $RenameMethod.Invoke($OriginalCommand, "_decr8r_$($OriginalCommand.Name)")
 
+        $DynParams = [DecoratedCommand]::GetParameters($OriginalCommand)
+
         $Wrapper = & {
             # Create new scope and bring in vars from parent scope - this reduces the size of the closure
             # $OriginalScriptBlock = $OriginalScriptBlock
             $OriginalCommand = $OriginalCommand
+            $DynParams = $DynParams
             $Decorator = $Decorator
 
-            return {
-                [DecoratedCommand]::_decoratedCommand = $OriginalCommand
-                $input | & $Decorator @args
-            }.GetNewClosure()
+            $Wrapper = if ($Decorator.CmdletBinding -or $OriginalCommand.CmdletBinding)
+            {
+                {
+                    [CmdletBinding()]
+                    param ()
+
+                    dynamicparam
+                    {
+                        $DynParams
+                    }
+                    end
+                    {
+                        [DecoratedCommand]::_decoratedCommand = $OriginalCommand
+                        $input | & $Decorator @args
+                    }
+                }
+            }
+            else
+            {
+                {
+                    [DecoratedCommand]::_decoratedCommand = $OriginalCommand
+                    $input | & $Decorator @args
+                }
+            }
+
+            return $Wrapper.GetNewClosure()
         }
         # # Instead of calling .GetNewClosure, we want to only inject the exact variables we need
         # $WrapperSessionState = $SessionStateProperty.GetValue($Wrapper)
         # $WrapperSessionState.PSVariable.Set("OriginalScriptBlock", $OriginalScriptBlock)
         # $WrapperSessionState.PSVariable.Set("Decorator", $Decorator)
 
+        # $CommandMetadata = $CommandMetadataField.GetValue($DecoratedFunction)
         $UpdateMethod.Invoke(
             $DecoratedFunction,
             (
@@ -132,5 +206,9 @@ function Initialize-Decorator
                 ([string]$DecoratedFunction.HelpFile)
             )
         )
+        # _commandMetadata = null;
+        # this._parameterSets = null;
+        # this.ExternalCommandMetadata = null;
+        # $CommandMetadataField.SetValue($DecoratedFunction, $CommandMetadata)
     }
 }
