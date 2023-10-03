@@ -37,7 +37,7 @@ function Add-Logging
 
 function SUT
 {
-    [DecorateWithAttribute("Add-Logging")]
+    [DecorateWith("Add-Logging")]
     [CmdletBinding()]
     param
     (

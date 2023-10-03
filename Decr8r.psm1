@@ -1,3 +1,5 @@
+$TypeAccelerators = [PSObject].Assembly.GetType("System.Management.Automation.TypeAccelerators")
+
 # https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_commonparameters
 [string[]]$CommonParameters = (
     'Verbose',
@@ -106,6 +108,8 @@ class DecorateWithAttribute : Attribute
     [string]$DecoratorName
 }
 
+$TypeAccelerators::Add("DecorateWith", [DecorateWithAttribute])
+
 
 #region Reflection
 $PrivateFlags = [Reflection.BindingFlags]'Nonpublic, Instance'
@@ -141,7 +145,7 @@ function Initialize-Decorator
 
     # Attributes are lazy-instantiated, so not in .ScriptBlock.Attributes yet. We have to go to the AST.
     $DecoratedFunctions = $ModuleFunctions.Where({
-        $_.ScriptBlock.Ast.Body.ParamBlock.Attributes.TypeName.FullName -eq [DecorateWithAttribute].FullName
+        $_.ScriptBlock.Ast.Body.ParamBlock.Attributes.TypeName.FullName -like "DecorateWith*"
     })
 
 
