@@ -115,7 +115,7 @@ $UpdateMethod = [Management.Automation.FunctionInfo].GetMethod('Update', $Privat
 
 $InternalSessionStateProperty = [Management.Automation.SessionState].GetProperty('Internal', $PrivateFlags)
 
-$GetFunctionTableMethod = $InternalSessionStateProperty.PropertyType.GetMethod('GetFunctionTable', $PrivateFlags)
+$GetFunctionTableMethod = $InternalSessionStateProperty.PropertyType.GetMethod('GetFunctionTableAtScope', $PrivateFlags)
 #endregion Reflection
 
 function Initialize-Decorator
@@ -123,7 +123,11 @@ function Initialize-Decorator
     param
     (
         [Parameter(Mandatory)]
-        [Management.Automation.SessionState]$SessionState
+        [Management.Automation.SessionState]$SessionState,
+
+        [Parameter()]
+        [ValidateSet('Local', 'Global', 'Script', 'Private', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9')]
+        [string]$Scope = 'Local'
     )
 
     Write-Host "In Initialize-Decorator" -ForegroundColor DarkGray
@@ -131,7 +135,7 @@ function Initialize-Decorator
     # if we call from the .psm1, the functions haven't been exported yet and this returns $null
     # So, use reflection to get the internal table
     $InternalSessionState = $InternalSessionStateProperty.GetValue($SessionState)
-    $FunctionTable = $GetFunctionTableMethod.Invoke($InternalSessionState, @())
+    $FunctionTable = $GetFunctionTableMethod.Invoke($InternalSessionState, $Scope)
 
     $ModuleFunctions = $FunctionTable.Values.Where({$_.Module -eq $SessionState.Module})
 
