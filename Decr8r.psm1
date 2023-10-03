@@ -58,6 +58,73 @@ class DecoratedCommand
 
         return $DynParams
     }
+
+    # hidden [scriptblock] $_decorated
+    hidden [Management.Automation.CommandInfo] $_decorated
+    hidden [Management.Automation.SteppablePipeline] $_pipeline
+
+    # DecoratedCommand([scriptblock]$_decorated)
+    # {
+    #     $this._decorated = $_decorated
+    # }
+
+    DecoratedCommand ([Management.Automation.CommandInfo] $_decorated)
+    {
+        $this._decorated = $_decorated
+    }
+
+    [Management.Automation.RuntimeDefinedParameterDictionary] GetP()
+    {
+        $DynParams = [Management.Automation.RuntimeDefinedParameterDictionary]::new()
+
+        Write-Host "in GetP"
+        if ($null -eq $this._decorated)
+        {
+            return $DynParams
+        }
+
+        # $Params = $this._decorated.Ast.Body.ParamBlock.Parameters
+        # $Params | ForEach-Object {
+        #     $Name = $_.Name.VariablePath.UserPath
+        #     if ($CommonParameters.Contains($Name)) {return}
+        $OriginalParams = $this._decorated.Parameters.Values | Where-Object {-not $CommonParameters.Contains($_.Name)}
+        $OriginalParams | ForEach-Object {
+            $DynParam = [Management.Automation.RuntimeDefinedParameter]::new(
+                $_.Name,
+                $_.ParameterType,
+                $_.Attributes
+            )
+            $DynParams.Add($_.Name, $DynParam)
+        }
+
+        return $DynParams
+    }
+
+    [void] Begin()
+    {
+        # Get-PSCallStack | ft | os | Write-Host
+        $Caller = Get-PSCallStack | Select-Object -Skip 1 -First 1
+        # $Caller | peek | gm | ft | os | write-host
+        $Vars = $Caller.GetFrameVariables()
+        $PSBP = [hashtable]$Vars.PSBoundParameters.Value
+        $PSBP.Remove('Decorated')
+        # $PSBP | os | Write-Host
+        # $Vars.PSCmdlet | os | Write-Host
+
+        $Wrapper = {& $this._decorated @PSBP}
+        $this._pipeline = $Wrapper.GetSteppablePipeline()
+        $this._pipeline.Begin($Vars.PSCmdlet)
+    }
+
+    [array] Process([object]$InputObject)
+    {
+        return $this._pipeline.Process($InputObject)
+    }
+
+    [array] End()
+    {
+        return $this._pipeline.End()
+    }
 }
 
 class DecorateWithAttribute : Attribute
@@ -77,6 +144,7 @@ class DecorateWithAttribute : Attribute
 }
 
 
+#region Reflection
 $PrivateFlags = [Reflection.BindingFlags]'Nonpublic, Instance'
 
 # Private method to update function scriptblock - this is used internally to save regenerating everything
@@ -98,6 +166,7 @@ $GetFunctionTableMethod = $InternalSessionStateProperty.PropertyType.GetMethod('
 $SBDataField = [scriptblock].GetField('_scriptBlockData', $PrivateFlags)
 $CompiledSBType = $SBDataField.FieldType
 $CompiledSBCmdletBindingField = $CompiledSBType.GetField('_usesCmdletBinding', $PrivateFlags)
+#endregion Reflection
 
 function Initialize-Decorator
 {
@@ -132,7 +201,7 @@ function Initialize-Decorator
         $DecoratorName = $DecoratorAttribute.PositionalArguments.Value
         $Decorator = $FunctionTable[$DecoratorName]
 
-        $DynParams = [DecoratedCommand]::GetParameters($Decorator)
+        # $DynParams = [DecoratedCommand]::GetParameters($Decorator)
         # [DecoratedCommand]::GetParameters($Decorator).GetEnumerator() | ForEach-Object {
         #     $DynParams[$_.Key] = $_.Value
         # }
@@ -142,16 +211,18 @@ function Initialize-Decorator
         # "original" - the original will be modified in place and left in the FunctionTable.
         $Ctor = $Decorated.GetType().GetConstructor($PrivateFlags, $Decorated.GetType())
         $OriginalCommand = $Ctor.Invoke($Decorated)
-
+        # $Decorated = [DecoratedCommand]::new($OriginalCommand)
+        # $DynParams = $Decorated.GetP()
 
         $Wrapper = & {
             # Create new scope and bring in vars from parent scope - this reduces the size of the closure
             $OriginalCommand = $OriginalCommand
-            $DynParams = $DynParams
+            $Decorated = [DecoratedCommand]::new($OriginalCommand)
+            $DynParams = $Decorated.GetP()
             $Decorator = $Decorator
 
             return {
-                # [CmdletBinding()]
+                [CmdletBinding()]
                 param ()
 
                 dynamicparam
@@ -161,8 +232,7 @@ function Initialize-Decorator
 
                 begin
                 {
-                    [DecoratedCommand]::_decoratedCommand = $OriginalCommand
-                    $Pipeline = {& $Decorator @PSBoundParameters}.GetSteppablePipeline()
+                    $Pipeline = {& $Decorator -Decorated $Decorated @PSBoundParameters}.GetSteppablePipeline()
                     $Pipeline.Begin($PSCmdlet)
                 }
 
