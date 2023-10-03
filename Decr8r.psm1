@@ -1,5 +1,6 @@
 $TypeAccelerators = [PSObject].Assembly.GetType("System.Management.Automation.TypeAccelerators")
 
+<#
 # https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_commonparameters
 [string[]]$CommonParameters = (
     'Verbose',
@@ -238,3 +239,4 @@ function Initialize-Decorator
         )
     }
 }
+#>
