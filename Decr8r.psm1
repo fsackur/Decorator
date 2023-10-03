@@ -18,10 +18,36 @@ $TypeAccelerators = [PSObject].Assembly.GetType("System.Management.Automation.Ty
 )
 [Collections.Generic.HashSet[string]]$CommonParameters = [Collections.Generic.HashSet[string]]::new($CommonParameters)
 
+
+#region Reflection
+$PrivateFlags = [Reflection.BindingFlags]'Nonpublic, Instance'
+
+# Private method to update function scriptblock - this is used internally to save regenerating everything
+$UpdateMethod = [Management.Automation.FunctionInfo].GetMethod('Update', $PrivateFlags, [type[]]([scriptblock], [bool], [Management.Automation.ScopedItemOptions], [string]))
+
+$InternalSessionStateProperty = [Management.Automation.SessionState].GetProperty('Internal', $PrivateFlags)
+
+$GetFunctionTableMethod = $InternalSessionStateProperty.PropertyType.GetMethod('GetFunctionTableAtScope', $PrivateFlags)
+
+$ContextProperty = [Management.Automation.CommandInfo].GetProperty('Context', $PrivateFlags)
+
+$ScriptInfoCtor = [Management.Automation.ScriptInfo].GetConstructor($PrivateFlags, [type[]]([string], [scriptblock], $ContextProperty.PropertyType))
+#endregion Reflection
+
+
 class DecoratedCommand
 {
     hidden [Management.Automation.CommandInfo] $_decorated
     hidden [Management.Automation.SteppablePipeline] $_pipeline
+
+    DecoratedCommand ([scriptblock]$ScriptBlock)
+    {
+        $Caller = Get-PSCallStack | Select-Object -Skip 1 -First 1
+        $Context = $Script:ContextProperty.GetValue($Caller.InvocationInfo.MyCommand)
+        $ScriptInfo = $Script:ScriptInfoCtor.Invoke(([guid]::NewGuid().ToString(), $ScriptBlock, $Context))
+        $this._decorated = $ScriptInfo
+        $this | Add-Member -MemberType ScriptProperty -Name Parameters -Value {$this.GetParameters()}
+    }
 
     DecoratedCommand ([Management.Automation.CommandInfo]$DecoratedCommand)
     {
@@ -110,17 +136,6 @@ class DecorateWithAttribute : Attribute
 
 $TypeAccelerators::Add("DecorateWith", [DecorateWithAttribute])
 
-
-#region Reflection
-$PrivateFlags = [Reflection.BindingFlags]'Nonpublic, Instance'
-
-# Private method to update function scriptblock - this is used internally to save regenerating everything
-$UpdateMethod = [Management.Automation.FunctionInfo].GetMethod('Update', $PrivateFlags, [type[]]([scriptblock], [bool], [Management.Automation.ScopedItemOptions], [string]))
-
-$InternalSessionStateProperty = [Management.Automation.SessionState].GetProperty('Internal', $PrivateFlags)
-
-$GetFunctionTableMethod = $InternalSessionStateProperty.PropertyType.GetMethod('GetFunctionTableAtScope', $PrivateFlags)
-#endregion Reflection
 
 function Initialize-Decorator
 {
