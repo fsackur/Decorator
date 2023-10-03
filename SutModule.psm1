@@ -6,17 +6,20 @@ function Add-Logging
     param
     (
         [Parameter(Position = 0)]
-        [DecoratedCommand]$Decorated
+        [DecoratedCommand]$Decorated,
+
+        [string]$bar
     )
 
     dynamicparam
     {
-        $Decorated.GetParameters()
+        $Decorated.Parameters
     }
 
     begin
     {
         Write-Host "I am logging: $bar" -ForegroundColor Green
+        [void]$PSBoundParameters.Remove('bar')
         $Decorated.Begin()
     }
 

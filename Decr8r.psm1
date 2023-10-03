@@ -28,9 +28,10 @@ class DecoratedCommand
             throw [ArgumentException]::new("Decorated command cannot be null", 'DecoratedCommand')
         }
         $this._decorated = $DecoratedCommand
+        $this | Add-Member -MemberType ScriptProperty -Name Parameters -Value {$this.GetParameters()}
     }
 
-    [Management.Automation.RuntimeDefinedParameterDictionary] GetParameters()
+    hidden [Management.Automation.RuntimeDefinedParameterDictionary] GetParameters()
     {
         $DynParams = [Management.Automation.RuntimeDefinedParameterDictionary]::new()
 
@@ -50,15 +51,36 @@ class DecoratedCommand
         return $DynParams
     }
 
+    hidden [Management.Automation.RuntimeDefinedParameterDictionary] GetMergedParameters([Management.Automation.CommandInfo]$Decorator)
+    {
+        $DynParams = $this.GetParameters()
+
+        $NewParams = $Decorator.Parameters.Values | Where-Object {
+            $_.ParameterType -ne $this.GetType() -and
+            -not $CommonParameters.Contains($_.Name)
+        }
+        $NewParams | ForEach-Object {
+            $DynParam = [Management.Automation.RuntimeDefinedParameter]::new(
+                $_.Name,
+                $_.ParameterType,
+                $_.Attributes
+            )
+            $DynParams[$_.Name] = $DynParam
+        }
+
+        return $DynParams
+    }
+
     [void] Begin()
     {
         $Caller = Get-PSCallStack | Select-Object -Skip 1 -First 1
         $Vars = $Caller.GetFrameVariables()
         $PSBP = [hashtable]$Vars.PSBoundParameters.Value
-        $PSBP.Remove('Decorated')
+        $DecParam = $Caller.InvocationInfo.MyCommand.Parameters.Values | Where-Object ParameterType -eq $this.GetType()
+        $PSBP.Remove($DecParam.Name)
         $Wrapper = {& $this._decorated @PSBP}
-        $this._pipeline = $Wrapper.GetSteppablePipeline()
-        $this._pipeline.Begin($Vars.PSCmdlet)
+        $this._pipeline = $Wrapper.GetSteppablePipeline($Caller.InvocationInfo.CommandOrigin)
+        $this._pipeline.Begin($Vars.PSCmdlet.Value)
     }
 
     [array] Process([object]$InputObject)
@@ -120,7 +142,7 @@ function Initialize-Decorator
 
 
     $DecoratedFunctions | ForEach-Object {
-        $Decorated = $OriginalCommand = $_
+        $Decorated = $ModuleFunction = $_
         Write-Host "Updating function: $Decorated" -ForegroundColor DarkGray
 
         $DecoratorAttribute = $Decorated.ScriptBlock.Ast.Body.ParamBlock.Attributes.Where({
@@ -132,14 +154,17 @@ function Initialize-Decorator
         # Clone the decorated command. The clone has the original code, and is called
         # "original" - the original will be modified in place and left in the FunctionTable.
         $Ctor = $Decorated.GetType().GetConstructor($PrivateFlags, $Decorated.GetType())
-        $OriginalCommand = $Ctor.Invoke($Decorated)
+        $Decorated = $Ctor.Invoke($Decorated)
 
         $Wrapper = & {
             # Create new scope and bring in vars from parent scope - this reduces the size of the closure
             $OriginalCommand = $OriginalCommand
-            $Decorated = [DecoratedCommand]::new($OriginalCommand)
-            $DynParams = $Decorated.GetParameters()
+            $Decorated = [DecoratedCommand]::new($Decorated)
+            $DynParams = $Decorated.GetMergedParameters($Decorator)
             $Decorator = $Decorator
+            $DecParam = $Decorator.Parameters.Values | Where-Object {$_.ParameterType.Name -eq "DecoratedCommand"}
+            # $DecParam = $Decorator.Parameters.Values | Where-Object ParameterType -eq [DecoratedCommand]
+            $Injector = @{$DecParam.Name = $Decorated}
 
             return {
                 [CmdletBinding()]
@@ -152,7 +177,13 @@ function Initialize-Decorator
 
                 begin
                 {
-                    $Pipeline = {& $Decorator -Decorated $Decorated @PSBoundParameters}.GetSteppablePipeline()
+                    $outBuffer = $null
+                    if ($PSBoundParameters.TryGetValue('OutBuffer', [ref]$outBuffer))
+                    {
+                        $PSBoundParameters['OutBuffer'] = 1
+                    }
+
+                    $Pipeline = {& $Decorator @Injector @PSBoundParameters}.GetSteppablePipeline()
                     $Pipeline.Begin($PSCmdlet)
                 }
 
@@ -174,12 +205,12 @@ function Initialize-Decorator
         }
 
         $UpdateMethod.Invoke(
-            $Decorated,
+            $ModuleFunction,
             (
                 $Wrapper,
                 $Force,
-                $Decorated.Options,
-                ([string]$Decorated.HelpFile)
+                $ModuleFunction.Options,
+                ([string]$ModuleFunction.HelpFile)
             )
         )
     }
