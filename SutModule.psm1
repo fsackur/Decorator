@@ -11,8 +11,7 @@ function Add-Logging
 
     dynamicparam
     {
-        # [DecoratedCommand]::GetParameters()
-        $Decorated.GetP()
+        $Decorated.GetParameters()
     }
 
     begin
@@ -29,7 +28,6 @@ function Add-Logging
     end
     {
         $Decorated.End()
-
         Write-Host "I am not logging any more!" -ForegroundColor Green
     }
 }
@@ -50,8 +48,5 @@ function SUT
     }
 }
 
-# Initialize-Decorator -Context $ExecutionContext
+
 Initialize-Decorator -SessionState $ExecutionContext.SessionState
-# Get-PSCallStack | fl * | Out-String | Write-Host
-# Write-Host $ExecutionContext.SessionState.Module
-# Write-Host $ExecutionContext.InvokeCommand.PreCommandLookupAction
