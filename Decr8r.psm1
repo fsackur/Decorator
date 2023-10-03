@@ -34,7 +34,7 @@ class DecoratedCommand
 
     static [Management.Automation.RuntimeDefinedParameterDictionary] GetParameters()
     {
-        return GetParameters([DecoratedCommand]::_decoratedCommand)
+        return [DecoratedCommand]::GetParameters([DecoratedCommand]::_decoratedCommand)
     }
 
     hidden static [Management.Automation.RuntimeDefinedParameterDictionary] GetParameters([Management.Automation.CommandInfo]$DecoratedCommand)
@@ -77,137 +77,130 @@ class DecorateWithAttribute : Attribute
 }
 
 
+$PrivateFlags = [Reflection.BindingFlags]'Nonpublic, Instance'
+
+# Private method to update function scriptblock - this is used internally to save regenerating everything
+$UpdateMethod = [Management.Automation.FunctionInfo].GetMethod(
+    'Update',
+    $PrivateFlags,
+    [type[]]([scriptblock], [bool], [Management.Automation.ScopedItemOptions], [string])
+)
+
+# $InternalSessionStateField = [Management.Automation.SessionState].GetField(
+#     '_sessionState',
+#     ([Reflection.BindingFlags]'Nonpublic, Instance')
+# )
+
+$InternalSessionStateProperty = [Management.Automation.SessionState].GetProperty('Internal', $PrivateFlags)
+
+$GetFunctionTableMethod = $InternalSessionStateProperty.PropertyType.GetMethod('GetFunctionTable', $PrivateFlags)
+
+$SBDataField = [scriptblock].GetField('_scriptBlockData', $PrivateFlags)
+$CompiledSBType = $SBDataField.FieldType
+$CompiledSBCmdletBindingField = $CompiledSBType.GetField('_usesCmdletBinding', $PrivateFlags)
+
 function Initialize-Decorator
 {
     param
     (
         [Parameter(Mandatory)]
         [Management.Automation.SessionState]$SessionState
-        # [Management.Automation.EngineIntrinsics]$Context
     )
-    # Write-Host $ExecutionContext.SessionState.Module  # Decr8r
-    # Get-PSCallStack | fl * | Out-String | Write-Host
-    # (Get-PSCallStack)[1].InvocationInfo.MyCommand | fl * | Out-String | Write-Host
-    # $SessionState | fl * | Out-String | Write-Host
 
-    # $SessionState.InvokeCommand.PreCommandLookupAction = {
-    #     param ($CommandName, $LookupEventArgs)
-
-    #     if ($CommandName -eq "foo")
-    #     {
-    #         Write-Host "Intercepted $CommandName" -ForegroundColor Green
-    #     }
-    # }
-    # $SessionState.InvokeCommand.GetCommands('*', 'All', $true) | select -First 10 | ft | os | write-host
-    # Get-Command -Module
-    # $SessionState.Module | select -First 10 | ft | os | write-host
-    # $SessionState.InvokeCommand.PostCommandLookupAction = {
-    #     param ($CommandName, $LookupEventArgs)
-
-    #     $Command = $LookupEventArgs.Command
-    #     # if ([DecoratedCommand]::_decoratedCommands.Contains($Command))
-    #     $Attr = $Command.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateWithAttribute]})
-    #     if ($Attr)
-    #     {
-    #         Write-Host "In PostCommandLookupAction" -ForegroundColor DarkGray
-    #         [DecoratedCommand]::_decoratedCommand = $Command
-    #         # $Attr = $Command.ScriptBlock.Attributes.Where({$_.TypeId -eq [DecorateWithAttribute]})[0]
-    #         $LookupEventArgs.Command = $Attr.Decorator
-    #     }
-    # }
     Write-Host "In Initialize-Decorator" -ForegroundColor DarkGray
-    # Get-Command -Module $SessionState.Module | ft | os | write-host     # if we call from the .psm1, the functions haven't been exported yet and this returns $null
 
+    # if we call from the .psm1, the functions haven't been exported yet and this returns $null
     # So, use reflection to get the internal table
-    $iss = [Management.Automation.SessionState].GetField('_sessionState', ([Reflection.BindingFlags]'Nonpublic, Instance')).GetValue($SessionState)
-    $FunctionTable = $iss.GetType().GetMethod('GetFunctionTable', ([Reflection.BindingFlags]'Nonpublic, Instance')).Invoke($iss, @())
+    $InternalSessionState = $InternalSessionStateProperty.GetValue($SessionState)
+    $FunctionTable = $GetFunctionTableMethod.Invoke($InternalSessionState, @())
 
     $ModuleFunctions = $FunctionTable.Values.Where({$_.Module -eq $SessionState.Module})
-    # Attributes are lazy-instantiated, so not in .ScriptBlock.Attributes yet
-    $DecoratedFunctions = $ModuleFunctions.Where({$_.ScriptBlock.Ast.Body.ParamBlock.Attributes.TypeName.FullName -eq [DecorateWithAttribute].FullName})
 
-    # Private method to update function scriptblock - this is used internally to save regenerating everything
-    $UpdateMethod = [Management.Automation.FunctionInfo].GetMethod(
-        'Update',
-        ([Reflection.BindingFlags]'Nonpublic, Instance'),
-        [type[]]([scriptblock], [bool], [Management.Automation.ScopedItemOptions], [string])
-    )
-    $CommandMetadataField = [Management.Automation.FunctionInfo].GetField(
-        '_commandMetadata',
-        ([Reflection.BindingFlags]'Nonpublic, Instance')
-    )
+    # Attributes are lazy-instantiated, so not in .ScriptBlock.Attributes yet. We have to go to the AST.
+    $DecoratedFunctions = $ModuleFunctions.Where({
+        $_.ScriptBlock.Ast.Body.ParamBlock.Attributes.TypeName.FullName -eq [DecorateWithAttribute].FullName
+    })
 
-    # Internal property to proxy to variables in a scriptblock's scope
-    $SessionStateProperty = [scriptblock].GetProperty('SessionState', ([Reflection.BindingFlags]'Nonpublic, Instance'))
 
-    # $DecoratedFunctions | ft | os | write-host
     $DecoratedFunctions | % {
-        $DecoratedFunction = $_
-        Write-Host "Updating function: $DecoratedFunction" -ForegroundColor DarkGray
-        $DecoratorAttribute = $DecoratedFunction.ScriptBlock.Ast.Body.ParamBlock.Attributes.Where({$_.TypeName.FullName -eq [DecorateWithAttribute].FullName})
+        $Decorated = $OriginalCommand = $_
+        Write-Host "Updating function: $Decorated" -ForegroundColor DarkGray
+
+        $DecoratorAttribute = $Decorated.ScriptBlock.Ast.Body.ParamBlock.Attributes.Where({
+            $_.TypeName.FullName -eq [DecorateWithAttribute].FullName
+        })
         $DecoratorName = $DecoratorAttribute.PositionalArguments.Value
         $Decorator = $FunctionTable[$DecoratorName]
-        # $OriginalScriptBlock = $DecoratedFunction.ScriptBlock
 
-        $Ctor = $DecoratedFunction.GetType().GetConstructor([Reflection.BindingFlags]'Nonpublic, Instance', $DecoratedFunction.GetType())
-        $OriginalCommand = $Ctor.Invoke($DecoratedFunction)
-        $RenameMethod = $OriginalCommand.GetType().GetMethod('Rename', [Reflection.BindingFlags]'Nonpublic, Instance', [string])
-        $RenameMethod.Invoke($OriginalCommand, "_decr8r_$($OriginalCommand.Name)")
+        $DynParams = [DecoratedCommand]::GetParameters($Decorator)
+        # [DecoratedCommand]::GetParameters($Decorator).GetEnumerator() | ForEach-Object {
+        #     $DynParams[$_.Key] = $_.Value
+        # }
 
-        $DynParams = [DecoratedCommand]::GetParameters($OriginalCommand)
+
+        # Clone the decorated command. The clone has the original code, and is called
+        # "original" - the original will be modified in place and left in the FunctionTable.
+        $Ctor = $Decorated.GetType().GetConstructor($PrivateFlags, $Decorated.GetType())
+        $OriginalCommand = $Ctor.Invoke($Decorated)
+
 
         $Wrapper = & {
             # Create new scope and bring in vars from parent scope - this reduces the size of the closure
-            # $OriginalScriptBlock = $OriginalScriptBlock
             $OriginalCommand = $OriginalCommand
             $DynParams = $DynParams
             $Decorator = $Decorator
 
-            $Wrapper = if ($Decorator.CmdletBinding -or $OriginalCommand.CmdletBinding)
-            {
-                {
-                    [CmdletBinding()]
-                    param ()
+            return {
+                # [CmdletBinding()]
+                param ()
 
-                    dynamicparam
-                    {
-                        $DynParams
-                    }
-                    end
-                    {
-                        [DecoratedCommand]::_decoratedCommand = $OriginalCommand
-                        $input | & $Decorator @args
-                    }
+                dynamicparam
+                {
+                    $DynParams
                 }
-            }
-            else
-            {
+
+                begin
                 {
                     [DecoratedCommand]::_decoratedCommand = $OriginalCommand
-                    $input | & $Decorator @args
+                    $Pipeline = {& $Decorator @PSBoundParameters}.GetSteppablePipeline()
+                    $Pipeline.Begin($PSCmdlet)
                 }
-            }
 
-            return $Wrapper.GetNewClosure()
+                process
+                {
+                    $Pipeline.Process($_)
+                }
+
+                end
+                {
+                    $Pipeline.End()
+                }
+
+                clean
+                {
+                    if ($null -ne $Pipeline) {$Pipeline.Clean()}
+                }
+            }.GetNewClosure()
         }
-        # # Instead of calling .GetNewClosure, we want to only inject the exact variables we need
-        # $WrapperSessionState = $SessionStateProperty.GetValue($Wrapper)
-        # $WrapperSessionState.PSVariable.Set("OriginalScriptBlock", $OriginalScriptBlock)
-        # $WrapperSessionState.PSVariable.Set("Decorator", $Decorator)
 
-        # $CommandMetadata = $CommandMetadataField.GetValue($DecoratedFunction)
+        # if (-not ($Decorated.CmdletBinding -or $Decorator.CmdletBinding))
+        # {
+        #     $CompiledWrapper = $SBDataField.GetValue($Wrapper)
+        #     $CompiledSBCmdletBindingField.SetValue($CompiledWrapper, $false)
+        # }
+
+        # $Ctor = $Decorated.GetType().GetConstructor($PrivateFlags, $Decorated.GetType())
+        # $OriginalCommand = $Ctor.Invoke($Decorated)
+        # internal FunctionInfo(string name, ScriptBlock function, ScopedItemOptions options, ExecutionContext context, string helpFile)
+
         $UpdateMethod.Invoke(
-            $DecoratedFunction,
+            $Decorated,
             (
                 $Wrapper,
                 $Force,
-                $DecoratedFunction.Options,
-                ([string]$DecoratedFunction.HelpFile)
+                $Decorated.Options,
+                ([string]$Decorated.HelpFile)
             )
         )
-        # _commandMetadata = null;
-        # this._parameterSets = null;
-        # this.ExternalCommandMetadata = null;
-        # $CommandMetadataField.SetValue($DecoratedFunction, $CommandMetadata)
     }
 }

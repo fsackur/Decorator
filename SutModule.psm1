@@ -5,15 +5,24 @@ function Add-Logging
     [CmdletBinding()]
     param
     (
-        [Parameter(Position = 0, ValueFromPipeline)]
-        $foo
+        [Parameter(Position = 0)]
+        $bar
     )
 
-    Write-Host "I am logging!" -ForegroundColor Green
+    dynamicparam
+    {
+        [DecoratedCommand]::GetParameters()
+    }
 
-    [DecoratedCommand]::Invoke($input, $PSBoundParameters, $args)
+    end
+    {
+        Write-Host "I am logging: $bar" -ForegroundColor Green
 
-    Write-Host "I am not logging any more!" -ForegroundColor Green
+        [void]$PSBoundParameters.Remove('bar')
+        [DecoratedCommand]::Invoke($input, $PSBoundParameters, $args)
+
+        Write-Host "I am not logging any more!" -ForegroundColor Green
+    }
 }
 
 function SUT
