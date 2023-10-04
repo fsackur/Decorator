@@ -21,6 +21,10 @@ namespace Decr8r
             internal static PropertyInfo DebuggerProperty = ContextProperty.PropertyType.GetProperty("Debugger", PrivateFlags)!;
 
             internal static ConstructorInfo ScriptInfoCtor = typeof(ScriptInfo).GetConstructor(PrivateFlags, null, new Type[] { typeof(string), typeof(ScriptBlock), ContextProperty.PropertyType }, null)!;
+
+            internal static Type IScriptCommandInfo = typeof(FunctionInfo).GetInterface("IScriptCommandInfo")!;
+
+            internal static PropertyInfo ScriptBlockProperty = IScriptCommandInfo.GetProperty("ScriptBlock")!;
         }
     }
 }

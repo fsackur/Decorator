@@ -37,7 +37,7 @@ function Add-Logging
 
 function SUT
 {
-    [DecorateWith("Add-Logging")]
+    # [DecorateWith("Add-Logging")]
     [CmdletBinding()]
     param
     (
@@ -52,4 +52,4 @@ function SUT
 }
 
 
-Initialize-Decorator -SessionState $ExecutionContext.SessionState
+# Initialize-Decorator -SessionState $ExecutionContext.SessionState
