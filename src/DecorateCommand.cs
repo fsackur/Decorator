@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Management.Automation;
 using SMA = System.Management.Automation;
 using System.Diagnostics;
@@ -13,40 +14,17 @@ namespace Decr8r
     public partial class DecoratedCommand : PSCmdlet, IDynamicParameters
     {
         // Parameters to exclude from GetDynamicParameters
-        public static ISet<string> StaticParams;
+        private static readonly ISet<string> StaticParams;
+
         static DecoratedCommand()
         {
-            StaticParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            StaticParams.UnionWith(CommonParameters);
+            StaticParams = new HashSet<string>(CommonParameters, StringComparer.OrdinalIgnoreCase);
             StaticParams.UnionWith(OptionalCommonParameters);
             StaticParams.Add(nameof(Command));
         }
 
-        // We need ExecutionContext, but it's an internal class and an internal instance member.
-        public dynamic? __context;
-        public dynamic _Context
-        {
-            get
-            {
-                __context ??= ReflectedMembers.ContextProperty.GetValue(this)!;
-                return __context;
-            }
-        }
-
-        public SMA.Debugger Debugger { get => ReflectedMembers.DebuggerProperty.GetValue(_Context); }
-
-        private CommandInfo _command;
-
         [Parameter(Mandatory = true, Position = 0)]
-        public CommandInfo Command
-        {
-            get => _command;
-            set
-            {
-                dynParams = null!;
-                _command = value;
-            }
-        }
+        public CommandInfo Command { get; set; }
 
         private SteppablePipeline? _pipeline;
 
@@ -54,38 +32,18 @@ namespace Decr8r
         {
             Command = null!;
         }
-        // public DecoratedCommand() : this(ScriptBlock.Create("")) {}
-        // public DecoratedCommand(ScriptBlock scriptBlock)
-        // {
-        //     Command = scriptBlock == null
-        //         ? throw new ArgumentException("Decorated command cannot be null", nameof(scriptBlock))
-        //         : (ScriptInfo)ReflectedMembers.ScriptInfoCtor.Invoke(new object[] { Guid.NewGuid().ToString(), scriptBlock, _Context as ExecutionContext });
-        // }
 
         public DecoratedCommand(CommandInfo decoratedCommand)
         {
             Command = decoratedCommand ?? throw new ArgumentException("Decorated command cannot be null", nameof(decoratedCommand));
         }
 
-        public CallStackFrame GetCaller()
+        private readonly ISet<string> staticBoundParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        public object GetDynamicParameters()
         {
-            return Debugger.GetCallStack().Where((f) => f.FunctionName != this.GetType().Name).First()
-                ?? throw new InvalidOperationException("Could not identify calling frame");
-        }
+            var dynParams = new RuntimeDefinedParameterDictionary();
 
-        private RuntimeDefinedParameterDictionary dynParams;
-        private ISet<string> staticBoundParams;
-
-        object IDynamicParameters.GetDynamicParameters() => GetDynamicParameters();
-
-        public RuntimeDefinedParameterDictionary GetDynamicParameters()
-        {
-            if (dynParams is not null)
-            {
-                return dynParams;
-            }
-
-            dynParams = new();
             if (Command is null)
             {
                 return dynParams;
@@ -102,30 +60,11 @@ namespace Decr8r
             return dynParams;
         }
 
-        // public RuntimeDefinedParameterDictionary GetMergedParameters(CommandInfo decorator)
-        // {
-        //     var dynParams = Parameters;
-
-        //     var newParams = decorator.Parameters.Values.Where((p) =>
-        //         p.ParameterType != this.GetType() &&
-        //         !(CommonParameters.Contains(p.Name) || OptionalCommonParameters.Contains(p.Name))
-        //     );
-
-        //     foreach (var p in newParams)
-        //     {
-        //         var dynParam = new RuntimeDefinedParameter(p.Name, p.ParameterType, p.Attributes);
-        //         dynParams[p.Name] = dynParam;
-        //     }
-
-        //     return dynParams;
-        // }
-
-        public void Begin() => BeginProcessing();
         protected override void BeginProcessing()
         {
-            staticBoundParams = new HashSet<string>(MyInvocation.BoundParameters.Keys, StringComparer.OrdinalIgnoreCase);
+            staticBoundParams.UnionWith(MyInvocation.BoundParameters.Keys);
 
-            MyInvocation.BoundParameters.Remove("Command");
+            MyInvocation.BoundParameters.Remove(nameof(Command));
 
             var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
             ps.AddCommand(Command).AddParameters(MyInvocation.BoundParameters);
@@ -133,7 +72,6 @@ namespace Decr8r
             _pipeline.Begin(this);
         }
 
-        public void Process() => ProcessRecord();
         protected override void ProcessRecord()
         {
             var pipelineBoundParams = MyInvocation.BoundParameters.Where((kvp) => !staticBoundParams.Contains(kvp.Key));
@@ -165,7 +103,6 @@ namespace Decr8r
             }
         }
 
-        public void End() => EndProcessing();
         protected override void EndProcessing()
         {
             _pipeline!.End();
