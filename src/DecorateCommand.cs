@@ -21,15 +21,10 @@ namespace Decr8r
             StaticParams = new HashSet<string>(CommonParameters, StringComparer.OrdinalIgnoreCase);
             StaticParams.UnionWith(OptionalCommonParameters);
             StaticParams.Add(nameof(Command));
-            StaticParams.Add(nameof(CommandName));
         }
 
-        [Parameter()]
+        [Parameter(Mandatory = true, Position = 0)]
         public CommandInfo Command { get; set; }
-
-        // workaround for https://github.com/PowerShell/PowerShell/issues/3984
-        [Parameter()]
-        public string? CommandName { get; set; }
 
         private SteppablePipeline? _pipeline;
 
@@ -49,14 +44,9 @@ namespace Decr8r
         {
             var dynParams = new RuntimeDefinedParameterDictionary();
 
-            if (Command is null && CommandName is null)
-            {
-                return dynParams;
-            }
-
             if (Command is null)
             {
-                Command = InvokeCommand.GetCommand(CommandName, CommandTypes.All);
+                return dynParams;
             }
 
             var originalParams = Command.Parameters.Values.Where((p) => !StaticParams.Contains(p.Name));
@@ -75,7 +65,6 @@ namespace Decr8r
             staticBoundParams.UnionWith(MyInvocation.BoundParameters.Keys);
 
             MyInvocation.BoundParameters.Remove(nameof(Command));
-            MyInvocation.BoundParameters.Remove(nameof(CommandName));
 
             var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
             ps.AddCommand(Command).AddParameters(MyInvocation.BoundParameters);
