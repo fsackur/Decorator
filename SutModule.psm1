@@ -37,7 +37,7 @@ function Add-Logging
 
 function SUT
 {
-    [DecorateWith("Add-Logging")]
+    # [DecorateWith("Add-Logging")]
     [CmdletBinding()]
     param
     (
@@ -51,5 +51,37 @@ function SUT
     }
 }
 
+function Has-DynamicParams
+{
+    # [DecorateWithAttribute("Add-Logging")]
+    [CmdletBinding()]
+    param
+    (
+        $StaticParam
+    )
 
-Initialize-Decorator -SessionState $ExecutionContext.SessionState
+    dynamicparam
+    {
+        $DynParams = [Management.Automation.RuntimeDefinedParameterDictionary]::new()
+        $DynParam = [Management.Automation.RuntimeDefinedParameter]::new(
+            "foo",
+            [object],
+            [Management.Automation.ParameterAttribute]::new()
+        )
+        $DynParams.Add($DynParam.Name, $DynParam)
+        $DynParam = [Management.Automation.RuntimeDefinedParameter]::new(
+            "bar",
+            [object],
+            [Management.Automation.ParameterAttribute]::new()
+        )
+        $DynParams.Add($DynParam.Name, $DynParam)
+        $DynParams
+
+        Get-Variable -Scope Local | ft | os | write-host
+    }
+
+    end {$PSBoundParameters.foo}
+}
+
+
+# Initialize-Decorator -SessionState $ExecutionContext.SessionState

@@ -67,6 +67,10 @@ namespace Decr8r
 
                 return null;
             }
+
+            internal static Type? GetType(Assembly assembly, string name) {
+                return assembly.GetType(name);
+            }
         }
     }
 }

@@ -26,7 +26,7 @@ namespace Decr8r
                 new ObjectModel.Collection<Attribute>
                 {
                     new ParameterAttribute {
-                        Position = 0,
+                        Position = int.MinValue + 1,    // MinValue disables positional binding; cannot have ambiguous. TODO: re-order values in dynamic block
                         Mandatory = true
                     },
                     new ValidateNotNullOrEmptyAttribute()
@@ -59,14 +59,35 @@ namespace Decr8r
 
         private object context { get => Reflected.GetPropertyValue(this, "Context")!; }
 
-        private IEnumerable GetUnboundArguments()
+        internal class CommandParameterInternalWrapper
+        {
+            internal bool ParameterNameSpecified;
+            internal string? ParameterName;
+            internal string? ParameterText;
+            internal bool ArgumentSpecified;
+            internal object? ArgumentValue;
+            internal CommandParameterInternalWrapper(object arg)
+            {
+                // Expected runtime type of arg: CommandParameterInternal
+                ParameterNameSpecified = (Boolean)Reflected.GetPropertyValue(arg, "ParameterNameSpecified")!;
+                ParameterName = ParameterNameSpecified ? Reflected.GetPropertyValue(arg, "ParameterName") as string : null;
+                ParameterText = Reflected.GetPropertyValue(arg, "ParameterText") as string;
+                ArgumentSpecified = (Boolean)Reflected.GetPropertyValue(arg, "ArgumentSpecified")!;
+                ArgumentValue = ArgumentSpecified ? Reflected.GetPropertyValue(arg, "ArgumentValue") : null;
+                if (ArgumentValue is PSObject pso)
+                {
+                    ArgumentValue = pso.BaseObject;
+                }
+            }
+        }
+
+        private IEnumerable<CommandParameterInternalWrapper> GetUnboundArguments()
         {
             var processor = Reflected.GetPropertyValue(context, "CurrentCommandProcessor")!;
             var parameterBinder = Reflected.GetPropertyValue(processor, "CmdletParameterBinderController")!;
-
-            // Expected runtime type: ObjectModel.Collection<CommandParameterInternal>
-            var args = Reflected.GetPropertyValue(parameterBinder, "UnboundArguments") as IEnumerable;
-            return args ?? Enumerable.Empty<object>();
+            var args = Reflected.GetPropertyValue(parameterBinder, "UnboundArguments") as IEnumerable<object>
+                ?? Enumerable.Empty<object>();
+            return args.Select((a) => new CommandParameterInternalWrapper(a));
         }
 
         // https://stackoverflow.com/a/29680516/6274530
@@ -112,65 +133,139 @@ namespace Decr8r
             return unnamedValue;
         }
 
-        public CallStackFrame GetCaller()
+        public IEnumerable<CallStackFrame> GetCallStack()
         {
             var Debugger = (Reflected.GetPropertyValue(context, "Debugger") as SMA.Debugger)!;
-            return Debugger.GetCallStack().Where((f) => f.FunctionName != this.GetType().Name).First()
-                ?? throw new InvalidOperationException("Could not identify calling frame");
+            return Debugger.GetCallStack();
         }
 
-        public CallStackFrame GetMyFrame()
+        public object GetDynParamStrategy(IEnumerable<StackFrame> stack)
         {
-            var Debugger = (Reflected.GetPropertyValue(context, "Debugger") as SMA.Debugger)!;
-            return Debugger.GetCallStack().First();
+            var entrypoint = stack.First();
+            // MethodBase entryMethod = entrypoint.GetMethod()!;
+            var entryMethod = entrypoint.GetMethod()!;
+
+            var PseudoParameterBinder = Reflected.GetType(typeof(PSObject).Assembly, "System.Management.Automation.Language.PseudoParameterBinder");
+
+            foreach (var frame in stack.Skip(1))
+            {
+                try
+                {
+                    var method = frame.GetMethod()!;
+                    if (method == entryMethod && method.DeclaringType == entryMethod.DeclaringType)
+                    {
+                        return "Recursion";
+                    }
+                    if (method.DeclaringType == PseudoParameterBinder)
+                    {
+                        return "Completion";
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+            }
+
+
+            return "foo";
         }
+
+        // public RuntimeDefinedParameterDictionary dynParams = new() { { commandParam.Name, commandParam } };
 
         public object GetDynamicParameters()
         {
-            var dynParams = new RuntimeDefinedParameterDictionary();
+            // var h = InvokeCommand.InvokeScript("Get-History -Count 1").Select((pso) => ((Microsoft.PowerShell.Commands.HistoryInfo)pso.BaseObject).Id).FirstOrDefault();
+            var dynParams = new RuntimeDefinedParameterDictionary() { { commandParam.Name, commandParam } };
 
-            var caller = GetCaller();
-
-            var myFrame = GetMyFrame();
-            var myCommandLine = myFrame.Position.Text;
-            Token[] tokens = null!;
-            ParseError[] errors = null!;
-            var ast = Parser.ParseInput(myCommandLine, out tokens, out errors)
-                ?? throw new ParseException(errors);
-            var statementAst = ast.EndBlock.Statements.Last() as PipelineAst
-                ?? throw new ParseException("Invocation was not a PipelineAst");
-            CommandAst commandAst = null!;
-            foreach (var a in statementAst.PipelineElements.Where((a) => a is CommandAst))
+            // When we invoke the static parameter binder, we recurse.
+            var trace = new StackTrace();
+            var _myFrame = trace.GetFrame(0)!;
+            var myMethod = _myFrame.GetMethod()!;
+            if (trace.GetFrames().Skip(1).Any((f) => { try { var fm = f.GetMethod(); return fm == myMethod && fm.DeclaringType == myMethod.DeclaringType; } catch { return false; } }))
             {
-                CommandAst c = (CommandAst)a!;
-                var command = InvokeCommand.GetCommand(c.GetCommandName(), CommandTypes.All);
-                while (command is AliasInfo)
-                {
-                    command = ((AliasInfo)command).ResolvedCommand;
-                }
-                if (command is CmdletInfo && command.Name == $"Decorate-Command")
-                {
-                    commandAst = c;
-                    break;
-                }
+                return dynParams;
             }
-                // ?? throw new ParseException("Invocation was not a CommandAst");
-
-            var bindingResult = StaticParameterBinder.BindCommand(commandAst, true);
-
-
 
             if (Command is null)
             {
-                // var context = Reflected.ContextProperty.GetValue(this);
-                // var processor = Reflected.CurrentCommandProcessorProperty.GetValue(this);
-                // var parameterBinder = Reflected.CmdletParameterBinderControllerProperty.GetValue(processor);
-                // var args = Reflected.UnboundArgumentsProperty.GetValue(parameterBinder) as System.Collections.IEnumerable;
+                var myCommandParts = new List<string> { MyInvocation.InvocationName };
+                var currentParamName = string.Empty;
+                foreach (var arg in GetUnboundArguments())
+                {
+                    if (arg.ParameterNameSpecified)
+                    {
+                        myCommandParts.Add(arg.ParameterText!);
+                        currentParamName = arg.ParameterName!;
+                    }
+                    if (arg.ArgumentSpecified)
+                    {
+                        if (arg.ArgumentValue is CommandInfo c)
+                        {
+                            if (commandParam.Name.StartsWith(currentParamName))
+                            {
+                                var childResolvedParam = string.Empty;
+                                try { childResolvedParam = c.ResolveParameter(currentParamName).Name; } catch {}
+                                if (string.IsNullOrEmpty(childResolvedParam))
+                                {
+                                    Command = c;
+                                    break;
+                                }
+                            }
+                            myCommandParts.Add(c.Name);
+                        }
+                        else if (arg.ArgumentValue is null)
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            myCommandParts.Add(arg.ArgumentValue.ToString());
+                        }
+                    }
+                }
 
-                var arg = GetUnboundValue("Command");
-                // args is empty when completing command name
-                dynParams[commandParam.Name] = commandParam;
-                return dynParams;
+                if (Command is null)
+                {
+                    var myCommandLine = string.Join(' ', myCommandParts);
+
+                    Token[] tokens = null!;
+                    ParseError[] errors = null!;
+                    var ast = Parser.ParseInput(myCommandLine, out tokens, out errors)
+                        ?? throw new ParseException(errors);
+
+                    var statementAst = ast.EndBlock.Statements.Last() as PipelineAst
+                        ?? throw new ParseException("Invocation was not a PipelineAst");
+
+                    var commandAst = statementAst.PipelineElements.OfType<CommandAst>().FirstOrDefault((c) =>
+                    {
+                        var commandInfo = InvokeCommand.GetCommand(c.GetCommandName(), CommandTypes.All);
+                        while (commandInfo is AliasInfo)
+                        {
+                            commandInfo = ((AliasInfo)commandInfo).ResolvedCommand;
+                        }
+                        return commandInfo is CmdletInfo && commandInfo.Name == MyInvocation.MyCommand.Name;
+                    });
+
+                    if (commandAst is null)
+                    {
+                        return dynParams;
+                    }
+
+                    // triggers recursion!
+                    var bindingResult = StaticParameterBinder.BindCommand(commandAst, true);
+
+                    var commandParamResult = bindingResult.BoundParameters.Where((kvp) => kvp.Key == commandParam.Name).Select((kvp) => kvp.Value).FirstOrDefault();
+                    if (commandParamResult is null)
+                    {
+                        return dynParams;
+                    }
+
+                    var valueAst = commandParamResult.Value;
+                    var value = InvokeCommand.InvokeScript(valueAst.Extent.Text).Select((pso) => pso.BaseObject);
+                    Command = value.FirstOrDefault() as CommandInfo
+                        ?? throw new ParameterBindingException("Failed to parse the decorated command");
+                }
             }
 
             var originalParams = Command.Parameters.Values.Where((p) => !StaticParams.Contains(p.Name));
@@ -181,6 +276,13 @@ namespace Decr8r
                 dynParams[p.Name] = dynParam;
             }
 
+            // TODO: re-order to ensure commandParam is always lowest above int.MinValue
+            // var foo = originalParams.SelectMany((p) => p.Attributes)
+            //                         .OfType<ParameterAttribute>()
+            //                         .Select((p) => p.Position)
+            //                         .Where((i) => i > int.MinValue)
+            //                         .Order()
+            //                         .First();
             return dynParams;
         }
 
@@ -188,7 +290,7 @@ namespace Decr8r
         {
             staticBoundParams.UnionWith(MyInvocation.BoundParameters.Keys);
 
-            MyInvocation.BoundParameters.Remove("Command");
+            MyInvocation.BoundParameters.Remove(commandParam.Name);
 
             var ps = PowerShell.Create(RunspaceMode.CurrentRunspace);
             ps.AddCommand(Command).AddParameters(MyInvocation.BoundParameters);
