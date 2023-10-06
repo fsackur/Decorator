@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
-using System.Management.Automation;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Decr8r
 {
@@ -8,21 +9,34 @@ namespace Decr8r
     {
         internal static class Reflected
         {
-            private static BindingFlags privateFlags = BindingFlags.NonPublic | BindingFlags.Instance;
+            internal static BindingFlags PrivateFlags = BindingFlags.NonPublic | BindingFlags.Instance;
 
-            internal static object? GetPropertyValue(object instance, string propertyName) {
+            internal static object? GetValue(object instance, string propertyOrFieldName)
+            {
                 // any access of a null object returns null.
-                if (instance == null || string.IsNullOrEmpty(propertyName)) {
+                if (instance == null || string.IsNullOrEmpty(propertyOrFieldName)) {
                     return null;
                 }
 
-                var propertyInfo = instance.GetType().GetProperty(propertyName, privateFlags);
-
-                if (propertyInfo != null)
+                var propertyInfo = instance.GetType().GetProperty(propertyOrFieldName, PrivateFlags);
+                if (propertyInfo is not null)
                 {
                     try
                     {
                         return propertyInfo.GetValue(instance);
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                }
+
+                var fieldInfo = instance.GetType().GetField(propertyOrFieldName, PrivateFlags);
+                if (fieldInfo is not null)
+                {
+                    try
+                    {
+                        return fieldInfo.GetValue(instance);
                     }
                     catch {}
                 }
@@ -30,13 +44,14 @@ namespace Decr8r
                 return null;
             }
 
-            internal static object? InvokeMethod(object instance, string methodName, object[]? parameters) {
+            internal static object? InvokeMethod(object instance, string methodName, object[]? parameters)
+            {
                 // any access of a null object returns null.
                 if (instance == null || string.IsNullOrEmpty(methodName)) {
                     return null;
                 }
 
-                var methodInfo = instance.GetType().GetMethod(methodName, privateFlags);
+                var methodInfo = instance.GetType().GetMethod(methodName, PrivateFlags);
 
                 if (methodInfo != null)
                 {
@@ -50,7 +65,8 @@ namespace Decr8r
                 return null;
             }
 
-            internal static Type? GetType(Assembly assembly, string name) {
+            internal static Type? GetType(Assembly assembly, string name)
+            {
                 return assembly.GetType(name);
             }
         }

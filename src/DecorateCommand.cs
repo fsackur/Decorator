@@ -1,11 +1,8 @@
 using System;
-using System.Reflection;
 using System.Management.Automation;
 using System.Management.Automation.Language;
-using SMA = System.Management.Automation;
 using System.Diagnostics;
 using System.Linq;
-using System.Collections;
 using ObjectModel = System.Collections.ObjectModel;
 using System.Collections.Generic;
 
@@ -57,7 +54,7 @@ namespace Decr8r
 
         private readonly ISet<string> staticBoundParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        private object context { get => Reflected.GetPropertyValue(this, "Context")!; }
+        private object context { get => Reflected.GetValue(this, "Context")!; }
 
         internal class CommandParameterInternalWrapper
         {
@@ -69,11 +66,11 @@ namespace Decr8r
             internal CommandParameterInternalWrapper(object arg)
             {
                 // Expected runtime type of arg: CommandParameterInternal
-                ParameterNameSpecified = (Boolean)Reflected.GetPropertyValue(arg, "ParameterNameSpecified")!;
-                ParameterName = ParameterNameSpecified ? Reflected.GetPropertyValue(arg, "ParameterName") as string : null;
-                ParameterText = Reflected.GetPropertyValue(arg, "ParameterText") as string;
-                ArgumentSpecified = (Boolean)Reflected.GetPropertyValue(arg, "ArgumentSpecified")!;
-                ArgumentValue = ArgumentSpecified ? Reflected.GetPropertyValue(arg, "ArgumentValue") : null;
+                ParameterNameSpecified = (Boolean)Reflected.GetValue(arg, "ParameterNameSpecified")!;
+                ParameterName = ParameterNameSpecified ? Reflected.GetValue(arg, "ParameterName") as string : null;
+                ParameterText = Reflected.GetValue(arg, "ParameterText") as string;
+                ArgumentSpecified = (Boolean)Reflected.GetValue(arg, "ArgumentSpecified")!;
+                ArgumentValue = ArgumentSpecified ? Reflected.GetValue(arg, "ArgumentValue") : null;
                 if (ArgumentValue is PSObject pso)
                 {
                     ArgumentValue = pso.BaseObject;
@@ -83,9 +80,9 @@ namespace Decr8r
 
         private IEnumerable<CommandParameterInternalWrapper> GetUnboundArguments()
         {
-            var processor = Reflected.GetPropertyValue(context, "CurrentCommandProcessor")!;
-            var parameterBinder = Reflected.GetPropertyValue(processor, "CmdletParameterBinderController")!;
-            var args = Reflected.GetPropertyValue(parameterBinder, "UnboundArguments") as IEnumerable<object>
+            var processor = Reflected.GetValue(context, "CurrentCommandProcessor")!;
+            var parameterBinder = Reflected.GetValue(processor, "CmdletParameterBinderController")!;
+            var args = Reflected.GetValue(parameterBinder, "UnboundArguments") as IEnumerable<object>
                 ?? Enumerable.Empty<object>();
             return args.Select((a) => new CommandParameterInternalWrapper(a));
         }
@@ -102,16 +99,16 @@ namespace Decr8r
             foreach (var arg in args) {
 
                 // Is it a param name:
-                var isParameterName = (Boolean)(Reflected.GetPropertyValue(arg, "ParameterNameSpecified") ?? false);
+                var isParameterName = (Boolean)(Reflected.GetValue(arg, "ParameterNameSpecified") ?? false);
                 if (isParameterName)
                 {
-                    string? parameterName = Reflected.GetPropertyValue(arg, "ParameterName") as string;
+                    string? parameterName = Reflected.GetValue(arg, "ParameterName") as string;
                     currentParameterName = parameterName ?? currentParameterName;
                     continue;
                 }
 
                 // Treat as a value:
-                var parameterValue = Reflected.GetPropertyValue(arg, "ArgumentValue");
+                var parameterValue = Reflected.GetValue(arg, "ArgumentValue");
 
                 if (!string.IsNullOrEmpty(currentParameterName))
                 {
@@ -135,7 +132,7 @@ namespace Decr8r
 
         public IEnumerable<CallStackFrame> GetCallStack()
         {
-            var Debugger = (Reflected.GetPropertyValue(context, "Debugger") as SMA.Debugger)!;
+            var Debugger = (Reflected.GetValue(context, "Debugger") as SMA.Debugger)!;
             return Debugger.GetCallStack();
         }
 
@@ -276,13 +273,6 @@ namespace Decr8r
                 dynParams[p.Name] = dynParam;
             }
 
-            // TODO: re-order to ensure commandParam is always lowest above int.MinValue
-            // var foo = originalParams.SelectMany((p) => p.Attributes)
-            //                         .OfType<ParameterAttribute>()
-            //                         .Select((p) => p.Position)
-            //                         .Where((i) => i > int.MinValue)
-            //                         .Order()
-            //                         .First();
             return dynParams;
         }
 
