@@ -137,22 +137,31 @@ namespace Decr8r
         protected override void ProcessRecord()
         {
             var pipelineBoundParams = MyInvocation.BoundParameters.Where((kvp) => !staticBoundParams.Contains(kvp.Key));
-            switch (pipelineBoundParams.Count())
+
+            var (byValue, passObject) = pipelineBoundParams.Count() switch
             {
-                case 0:
-                    _pipeline!.Process(); break;
-                case 1:
-                    // ValueFromPipeline
-                    _pipeline!.Process(pipelineBoundParams.First().Value); break;
-                default:
-                    // ValueFromPipelineByPropertyName
-                    var obj = new PSObject();
-                    foreach (var kvp in pipelineBoundParams)
-                    {
-                        obj.Members.Add(new PSNoteProperty(kvp.Key, kvp.Value));
-                    }
-                    _pipeline!.Process(obj);
-                    break;
+                0 => (false, false),
+                1 => (Command.Parameters[pipelineBoundParams.First().Key]
+                             .Attributes
+                             .OfType<ParameterAttribute>()
+                             .Where((a) => a.ParameterSetName == ParameterSetName)
+                             .Any((a) => a.ValueFromPipeline),
+                      true),
+                _ => (true, true)
+            };
+
+            if (passObject)
+            {
+                var pso = new PSObject();
+                foreach (var kvp in pipelineBoundParams)
+                {
+                    pso.Members.Add(new PSNoteProperty(kvp.Key, kvp.Value));
+                }
+                _pipeline!.Process(pso);
+            }
+            else
+            {
+                _pipeline!.Process();
             }
         }
 
