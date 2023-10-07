@@ -5,7 +5,7 @@ $DecoratorDeclaration = {
         param
         (
             [Parameter(Position = 0)]
-            [Decr8r.DecoratedCommand]$Decorated,
+            [DecoratedCommand]$Decorated,
 
             [string]$bar
         )
@@ -40,7 +40,7 @@ $DecoratorDeclaration = {
 $SimpleFunctionDeclaration = {
     function SUT
     {
-        [Decr8r.DecorateWith("Add-Logging")]
+        [DecorateWith("Add-Logging")]
         [CmdletBinding()]
         param
         (
@@ -56,7 +56,7 @@ $SimpleFunctionDeclaration = {
 $PipelineFunctionDeclaration = {
     function SUT
     {
-        [Decr8r.DecorateWith("Add-Logging")]
+        [DecorateWith("Add-Logging")]
         [CmdletBinding()]
         param
         (
