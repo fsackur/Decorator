@@ -12,7 +12,7 @@
                 "-NoExit",
                 "-NoProfile",
                 "-Command",
-                "ipmo ./Decr8r.psd1 -Force"
+                "ipmo ./Decr8r.psd1, ./SutModule.psm1 -Force -DisableNameChecking"
             ],
             "cwd": "${workspaceFolder}",
             "stopAtEntry": false,

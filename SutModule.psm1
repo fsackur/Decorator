@@ -1,5 +1,3 @@
-using module .\Decr8r.psm1
-
 function Add-Logging
 {
     [CmdletBinding()]
@@ -53,7 +51,7 @@ function SUT
 
 function Has-DynamicParams
 {
-    # [DecorateWithAttribute("Add-Logging")]
+    [DecorateWith("Add-Logging")]
     [CmdletBinding()]
     param
     (
