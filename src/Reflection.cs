@@ -65,6 +65,27 @@ namespace Decr8r
                 return null;
             }
 
+            internal static object? Construct(Type type, object[]? parameters)
+            {
+                // any access of a null object returns null.
+                if (type == null) {
+                    return null;
+                }
+
+                Type[] types = parameters?.Select(p => p.GetType()).ToArray() ?? Array.Empty<Type>();
+                var ctor = type.GetConstructor(PrivateFlags, types);
+
+                if (ctor != null)
+                {
+                    try
+                    {
+                        return ctor.Invoke(parameters);
+                    }
+                    catch {}
+                }
+
+                return null;
+            }
             internal static Type? GetType(Assembly assembly, string name)
             {
                 return assembly.GetType(name);

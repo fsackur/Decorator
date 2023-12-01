@@ -23,27 +23,20 @@ namespace Decr8r
                 ? throw new ArgumentNullException(nameof(decoratorName), "Provide the name of a decorator command.")
                 : decoratorName.Trim();
 
-            if (Runspace.CanUseDefaultRunspace
-                && Runspace.DefaultRunspace.Debugger is Debugger debugger
-                && debugger.GetCallStack().FirstOrDefault() is CallStackFrame caller)
-            {
-            }
-            else
+            if (!
+                (Runspace.CanUseDefaultRunspace
+                    && Runspace.DefaultRunspace.Debugger is Debugger debugger
+                    && debugger.GetCallStack().FirstOrDefault() is CallStackFrame caller))
             {
                 throw new DecoratorCannotBeAppliedException("Decr8r: cannot decorate command: default runspace is not available.");
             }
 
+            PSVariable? psVar;
+            Ast? ast;
             var frameVars = caller.GetFrameVariables();
 
-            PSVariable? psVar;
-            string? invocation;
-            Ast? ast;
-            // PSCmdlet? psCmdlet;
-            CommandInvocationIntrinsics invokeCommand;
-            CommandInfo? command;
-
             // when invoking the command
-            invocation = caller.Position.Text;
+            var invocation = caller.Position.Text;
 
             // when tab-completing
             if (invocation.StartsWith("[System.Management.Automation.CommandCompletion]::CompleteInput("))
@@ -74,6 +67,8 @@ namespace Decr8r
 
             string commandName = (string)commandAst.CommandElements[0].SafeGetValue();
 
+            CommandInvocationIntrinsics invokeCommand;
+            object? executionContext = null;
             if (frameVars.TryGetValue("PSCmdlet", out psVar))
             {
                 var psCmdlet = (PSCmdlet)psVar.Value;
@@ -81,13 +76,30 @@ namespace Decr8r
             }
             else
             {
-                var executionContext = DecoratedCommand.Reflected.GetValue(debugger, "_context");
+                executionContext = DecoratedCommand.Reflected.GetValue(debugger, "_context");
                 EngineIntrinsics engineIntrinsics = (EngineIntrinsics)DecoratedCommand.Reflected.GetValue(executionContext!, "EngineIntrinsics")!;
                 invokeCommand = engineIntrinsics.InvokeCommand;
             }
 
             Decorator = invokeCommand.GetCommand(decoratorName, CommandTypes.All);
             Command = invokeCommand.GetCommand(commandName, CommandTypes.All);
+
+            var sessionState = Command.Module!.SessionState;
+            if (sessionState is null)
+            {
+                executionContext ??= DecoratedCommand.Reflected.GetValue(debugger, "_context");
+                sessionState = (SessionState)DecoratedCommand.Reflected.GetValue(executionContext!, "SessionState")!;
+            }
+
+            var internalSessionState = DecoratedCommand.Reflected.GetValue(sessionState, "_sessionState");
+            var functionTable = (Dictionary<string, FunctionInfo>)DecoratedCommand.Reflected.InvokeMethod(internalSessionState!, "GetFunctionTable", new object[] { })!;
+
+            var decoratedFunction = (FunctionInfo)DecoratedCommand.Reflected.Construct(typeof(FunctionInfo), new object[] { commandName })!;
+            var scriptBlock = ScriptBlock.Create($"& {decoratorName} -Decorated {commandName} $args");
+
+            // void Update(ScriptBlock newFunction, bool force, ScopedItemOptions options, string helpFile)
+            DecoratedCommand.Reflected.InvokeMethod(decoratedFunction, "Update", new object[] { scriptBlock, true, (Command as FunctionInfo)!.Options, (Command as FunctionInfo)!.HelpFile });
+            functionTable[commandName] = decoratedFunction;
         }
 
         public CommandInfo Decorator { get; init; }

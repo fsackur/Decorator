@@ -75,7 +75,7 @@ function Has-DynamicParams
         $DynParams.Add($DynParam.Name, $DynParam)
         $DynParams
 
-        Get-Variable -Scope Local | ft | os | write-host
+        Get-Variable -Scope Local | ft | Out-String | write-host
     }
 
     end {$PSBoundParameters.foo}
