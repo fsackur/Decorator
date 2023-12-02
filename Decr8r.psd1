@@ -16,6 +16,10 @@
 
     RequiredModules      = @()
 
+    NestedModules        = @(
+        'Decr8r.dll'
+    )
+
     FunctionsToExport    = @(
         '*'
     )

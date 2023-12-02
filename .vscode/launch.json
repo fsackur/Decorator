@@ -1,0 +1,50 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "PowerShell cmdlets: pwsh",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "Build",
+            "program": "pwsh",
+            // "program": "C:/gitroot/PowerShell/debug/pwsh.exe",
+            "args": [
+                "-NoExit",
+                "-NoProfile",
+                "-Command",
+                "ipmo ./Decr8r.psd1 -Force"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnFirstSessionStart",
+            "justMyCode": false,
+            "requireExactSource": false
+        },
+        {
+            "name": ".NET Core Attach",
+            "type": "coreclr",
+            "request": "attach",
+            "justMyCode": false,
+            "processId": "${command:pickProcess}"
+        },
+        {
+            "type": "PowerShell",
+            "request": "launch",
+            "name": "PowerShell Launch Current File",
+            "script": "${file}",
+            "args": [],
+            "cwd": "${file}"
+        },
+        {
+            "type": "PowerShell",
+            "request": "launch",
+            "name": "PowerShell Launch Current File w/Args Prompt",
+            "script": "${file}",
+            "args": [
+                "${command:SpecifyScriptArgs}"
+            ],
+            "cwd": "${file}"
+        }
+    ]
+}
