@@ -23,6 +23,10 @@ param
     [string]$OutputFolder = 'Build'
 )
 
+$ModuleBase = $BuildRoot |
+    Join-Path -ChildPath $OutputFolder |
+    Join-Path -ChildPath $ModuleName
+
 # Synopsis: Update manifest version
 task UpdateVersion {
     $ManifestPath = "$ModuleName.psd1"
@@ -97,33 +101,37 @@ task CSBuild {
         Copy-Item -Destination $BuildFolder
 }
 
-# Synopsis: Run Pester in current process
-task TestInProcess {
-    Import-Module "$BuildRoot/$OutputFolder/$ModuleName" -Force -Global -ErrorAction Stop
-    Invoke-Pester
+
+$TestRunner = {
+    Import-Module $ModuleBase -Force -Global -ErrorAction Stop
+    Invoke-Pester -Configuration @{Run = @{Throw = $true}}
 }
+
+# Synopsis: Run Pester in current process
+task TestInProcess $TestRunner
 
 # Synopsis: Run Pester in new pwsh process
 task Test {
-    pwsh -NoProfile -Command {
-        Import-Module "$BuildRoot/$OutputFolder/$ModuleName" -Force -Global -ErrorAction Stop
-        Invoke-Pester
+    pwsh -NoProfile -Command ($TestRunner -replace '\$ModuleBase\b', "'$ModuleBase'")
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Pester failed with exit code $LASTEXITCODE"
     }
 }
 
 # Synopsis: Run Pester in new (windows) powershell process
 task TestWindowsPowershell {
-    powershell -NoProfile -Command {
-        Import-Module "$BuildRoot/$OutputFolder/$ModuleName" -Force -Global -ErrorAction Stop
-        Invoke-Pester
+    powershell -NoProfile -Command ($TestRunner -replace '$ModuleBase\b', "'$ModuleBase'")
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Pester failed with exit code $LASTEXITCODE"
     }
 }
 
 # Synopsis: Publish to PSGallery
-task Publish Clean, PSBuild, CSBuild, {
-    $UnversionedBase = "$OutputFolder/$ModuleName"
-    $VersionedBase = Get-Module $UnversionedBase -ListAvailable | ForEach-Object ModuleBase
-    Get-ChildItem $VersionedBase | Copy-Item -Destination $UnversionedBase
+task Publish Clean, PSBuild, CSBuild, Test, TestWindowsPowershell, {
+    $VersionedBase = Get-Module $ModuleBase -ListAvailable | ForEach-Object ModuleBase
+    Get-ChildItem $VersionedBase | Copy-Item -Destination $ModuleBase
     remove $VersionedBase
-    Publish-PSResource -Verbose -Path $UnversionedBase -DestinationPath Build -Repository PSGallery -ApiKey $PSGalleryApiKey
+    Publish-PSResource -Verbose -Path $ModuleBase -DestinationPath Build -Repository PSGallery -ApiKey $PSGalleryApiKey
 }

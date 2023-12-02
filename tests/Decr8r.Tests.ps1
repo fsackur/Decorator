@@ -1,19 +1,8 @@
 BeforeAll {
-    $AssetsFolder = Join-Path $PSScriptRoot assets
-    $AssetsFolder |
+    $PSScriptRoot |
+        Join-Path -ChildPath assets |
         Get-ChildItem -Filter *.ps1 -File |
         ForEach-Object {. $_.FullName}
-    $BuildFolder = $PSScriptRoot |
-        Split-Path |
-        Join-Path -ChildPath Build |
-        Join-Path -ChildPath Decr8r
-
-    Get-Module Decr8r |
-        Remove-Module
-    Get-Module $BuildFolder -ListAvailable |
-        Sort-Object Version |
-        Select-Object -Last 1 |
-        Import-Module -Force
 }
 
 Describe 'Decr8r' {
