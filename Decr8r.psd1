@@ -17,7 +17,7 @@
     RequiredModules      = @()
 
     NestedModules        = @(
-        'src/bin/Debug/net7.0/Decr8r.dll'
+        'Decr8r.dll'
     )
 
     FunctionsToExport    = @(
