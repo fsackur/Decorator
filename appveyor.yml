@@ -1,0 +1,58 @@
+version: "{build}"
+
+image: Visual Studio 2022
+
+cache:
+- C:\Users\appveyor\Documents\PowerShell\Modules\Pester
+- C:\Users\appveyor\Documents\PowerShell\Modules\PowerShellGet
+- C:\Users\appveyor\Documents\PowerShell\Modules\InvokeBuild
+
+skip_branch_with_pr: true
+
+skip_commits:
+  author: appveyor
+
+environment:
+  GITHUB_TOKEN:
+    secure: VBvtOx1GcfCw0CpszU3o51q+rXovGMjX25Ld2RUF3c2rF1kaGF+cF8OiB6U2fPbY
+  PSGALLERY_API_KEY:
+    secure: UmYQsexe/hTwjL9R4PL6/2yzzwLPMERuN4FD2vWTtlWON8QBOeCifkmDCfzMjifo
+
+init:
+- pwsh: |
+    if ($env:APPVEYOR_REPO_TAG -eq 'true')
+    {
+        [version]$Version = $env:APPVEYOR_REPO_TAG_NAME -replace '^\D*' -replace '\D*$'
+        [int]$Build = $env:APPVEYOR_BUILD_NUMBER
+        $BuildVersion = $Version, ++$Build -join '.'
+        Update-AppVeyorBuild -Version $BuildVersion
+    }
+    else
+    {
+        Update-AppVeyorBuild -Version ($env:APPVEYOR_PULL_REQUEST_HEAD_REPO_BRANCH, $env:APPVEYOR_BUILD_NUMBER -join '-')
+    }
+
+build_script:
+- pwsh: |
+    ./install-build-dependencies.ps1
+
+    Invoke-Build Test
+
+artifacts:
+- path: ./Build/**WhoCalled*.nupkg
+  name: NuGet package
+
+# If we updated the version in the build step, then we should commit and push
+before_deploy:
+- pwsh: |
+    Invoke-Build Publish -PSGalleryApiKey $env:PSGALLERY_API_KEY
+
+deploy:
+- provider: GitHub
+  tag: $(APPVEYOR_REPO_TAG_NAME)
+  description: WhoCalled $(APPVEYOR_REPO_TAG_NAME)
+  auth_token:
+    secure: VBvtOx1GcfCw0CpszU3o51q+rXovGMjX25Ld2RUF3c2rF1kaGF+cF8OiB6U2fPbY
+  artifact: NuGet package
+  on:
+    APPVEYOR_REPO_TAG: true

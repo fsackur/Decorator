@@ -1,3 +1,4 @@
+Build/
 bin/
 obj/
 .ionide/
@@ -24,9 +25,6 @@ dotnet-uninstall-debian-packages.sh
 
 # Visual Studio IDE directory
 .vs/
-
-# VSCode directories that are not at the repository root
-/**/.vscode/
 
 # Project Rider IDE files
 .idea.powershell/
