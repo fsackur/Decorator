@@ -13,17 +13,22 @@ $Dependencies = (
     }
 )
 
-$Dependencies | % {
-    if (-not (Get-Module $_.Name -ListAvailable -ErrorAction Ignore | ? Version -ge $_.MinimumVersion))
-    {
-        $Params = @{
-            Force              = $true
-            AllowClobber       = $true
-            Repository         = 'PSGallery'
-            SkipPublisherCheck = $true
-            AllowPrerelease    = $_.Name -eq 'PowerShellGet'
+Get-PSRepository | Out-String | Write-Host
+
+$Dependencies |
+    ForEach-Object {
+        if (-not (Get-Module $_.Name -ListAvailable -ErrorAction Ignore | Where-Object Version -ge $_.MinimumVersion))
+        {
+            $Params = @{
+                Force              = $true
+                AllowClobber       = $true
+                Repository         = 'PSGallery'
+                SkipPublisherCheck = $true
+                AllowPrerelease    = $_.Name -eq 'PowerShellGet'
+            }
+            Write-Verbose "Installing $($_.Name)..."
+            Install-Module @Params @_ -PassThru
         }
-        Write-Verbose "Installing $($_.Name)..."
-        Install-Module @Params @_
-    }
-}
+    } |
+    Out-String |
+    Write-Host
