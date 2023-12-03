@@ -82,7 +82,7 @@ task CSBuild @{
     Outputs = $BuiltAssembly
     Jobs    = 'CreateFolder', {
 
-        dotnet build $CsProjPath --output $BinOutputFolder
+        exec {dotnet build $CsProjPath --output $BinOutputFolder}
 
         $BinInclude |
             ForEach-Object {Join-Path $BinOutputFolder $_} |
@@ -133,20 +133,12 @@ task TestInProcess Build, $TestRunner
 
 # Synopsis: Run Pester in new pwsh process
 task Test Build, {
-    pwsh -NoProfile -Command ($TestRunner -replace '\$ModuleBase\b', "'$ModuleBase'")
-    if ($LASTEXITCODE -ne 0)
-    {
-        throw "Pester failed with exit code $LASTEXITCODE"
-    }
+    exec {pwsh -NoProfile -Command ($TestRunner -replace '\$ModuleBase\b', "'$ModuleBase'")}
 }
 
 # Synopsis: Run Pester in new (windows) powershell process
 task TestWindowsPowershell Build, {
-    powershell -NoProfile -Command ($TestRunner -replace '$ModuleBase\b', "'$ModuleBase'")
-    if ($LASTEXITCODE -ne 0)
-    {
-        throw "Pester failed with exit code $LASTEXITCODE"
-    }
+    exec {powershell -NoProfile -Command ($TestRunner -replace '$ModuleBase\b', "'$ModuleBase'")}
 }
 
 # Synopsis: Publish to PSGallery
