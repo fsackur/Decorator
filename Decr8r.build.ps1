@@ -26,6 +26,8 @@ param
 $ModuleBase = $BuildRoot |
     Join-Path -ChildPath $OutputFolder |
     Join-Path -ChildPath $ModuleName
+$BuiltAssembly = Join-Path $ModuleBase "$ModuleName.dll"
+$BuiltManifest = Join-Path $ModuleBase "$ModuleName.psd1"
 
 # Synopsis: Update manifest version
 task UpdateVersion {
@@ -69,51 +71,68 @@ task Clean {
     remove $OutputFolder
 }
 
-# Synopsis: Build PS module at manifest version
-task PSBuild {
+# Synopsis: Create build folder
+task CreateFolder {
     $null = New-Item $ModuleBase -ItemType Directory -Force
-    $RootModulePath = Join-Path $ModuleBase "$ModuleName.psm1"
-
-    $Include |
-        Where-Object {Test-Path $_} |
-        Get-Item |
-        Copy-Item -Destination $ModuleBase -Recurse
-
-    $PSScriptFolders |
-        Where-Object {Test-Path $_} |
-        ForEach-Object {
-            "",
-            "#region $_",
-            ($_ | Get-ChildItem | Get-Content),
-            "#endregion $_",
-            ""
-        } |
-        Write-Output |
-        Out-File $RootModulePath -Append -Encoding utf8NoBOM
 }
 
 # Synopsis: Build C# project
-task CSBuild {
-    dotnet build $CsProjPath --output $BinOutputFolder
+task CSBuild @{
+    Inputs  = {Get-ChildItem src -Exclude bin, obj | Get-ChildItem -File -Recurse}
+    Outputs = $BuiltAssembly
+    Jobs    = 'CreateFolder', {
 
-    $BinInclude |
-        ForEach-Object {Join-Path $BinOutputFolder $_} |
-        Where-Object {Test-Path $_} |
-        Get-Item |
-        Copy-Item -Destination $ModuleBase -Recurse
+        dotnet build $CsProjPath --output $BinOutputFolder
+
+        $BinInclude |
+            ForEach-Object {Join-Path $BinOutputFolder $_} |
+            Where-Object {Test-Path $_} |
+            Get-Item |
+            Copy-Item -Destination $ModuleBase -Recurse
+    }
 }
 
+# Synopsis: Build PS module at manifest version
+task PSBuild @{
+    Inputs  = {($Include | Get-Item), ($PSScriptFolders | Get-ChildItem -Recurse) | Write-Output}
+    Outputs = $BuiltManifest
+    Jobs    = 'CreateFolder', {
+
+        $RootModulePath = Join-Path $ModuleBase "$ModuleName.psm1"
+
+        $Include |
+            Where-Object {Test-Path $_} |
+            Get-Item |
+            Copy-Item -Destination $ModuleBase -Recurse
+
+        $PSScriptFolders |
+            Where-Object {Test-Path $_} |
+            ForEach-Object {
+                "",
+                "#region $_",
+                ($_ | Get-ChildItem | Get-Content),
+                "#endregion $_",
+                ""
+            } |
+            Write-Output |
+            Out-File $RootModulePath -Append -Encoding utf8NoBOM
+
+        $BuiltManifest | Get-Item | ForEach-Object {$_.LastWriteTime = [datetime]::Now}
+    }
+}
+
+task Build CSBuild, PSBuild
 
 $TestRunner = {
-    Import-Module $ModuleBase -Force -Global -ErrorAction Stop
+    Import-Module $ModuleBase -Force -Global -ErrorAction Stop -DisableNameChecking
     Invoke-Pester -Configuration @{Run = @{Throw = $true}}
 }
 
 # Synopsis: Run Pester in current process
-task TestInProcess $TestRunner
+task TestInProcess Build, $TestRunner
 
 # Synopsis: Run Pester in new pwsh process
-task Test {
+task Test Build, {
     pwsh -NoProfile -Command ($TestRunner -replace '\$ModuleBase\b', "'$ModuleBase'")
     if ($LASTEXITCODE -ne 0)
     {
@@ -122,7 +141,7 @@ task Test {
 }
 
 # Synopsis: Run Pester in new (windows) powershell process
-task TestWindowsPowershell {
+task TestWindowsPowershell Build, {
     powershell -NoProfile -Command ($TestRunner -replace '$ModuleBase\b', "'$ModuleBase'")
     if ($LASTEXITCODE -ne 0)
     {
@@ -131,6 +150,6 @@ task TestWindowsPowershell {
 }
 
 # Synopsis: Publish to PSGallery
-task Publish Clean, PSBuild, CSBuild, Test, TestWindowsPowershell, {
+task Publish Clean, CSBuild, PSBuild, Test, TestWindowsPowershell, {
     Publish-PSResource -Verbose -Path $ModuleBase -DestinationPath Build -Repository PSGallery -ApiKey $PSGalleryApiKey
 }
