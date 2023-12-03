@@ -46,9 +46,21 @@ task UpdateVersion {
 
 # Synopsis: Run PSSA, excluding Tests folder and *.build.ps1
 task PSSA {
-    $Files = Get-ChildItem -File -Recurse -Filter *.ps*1 | Where-Object FullName -notmatch '\bTests\b|\.build\.ps1$|install-build-dependencies\.ps1'
-    $Files | ForEach-Object {
-        Invoke-ScriptAnalyzer -Path $_.FullName -Recurse -Settings .\.vscode\PSScriptAnalyzerSettings.psd1
+    $Files = $Include, $PSScriptFolders |
+        Write-Output |
+        Where-Object {Test-Path $_} |
+        Get-ChildItem -Recurse -Exclude PSDiagnostics.psm1
+    # $Files +=  | Where-Object {Test-Path $_} | Get-Item
+
+    $Files |
+        ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_.FullName -Recurse -Settings .\.vscode\PSScriptAnalyzerSettings.psd1
+        } |
+        Tee-Object -Variable PSSAOutput
+
+    if ($PSSAOutput | Where-Object Severity -ge ([int][Microsoft.Windows.PowerShell.ScriptAnalyzer.Generic.DiagnosticSeverity]::Warning))
+    {
+        throw "PSSA found code violations"
     }
 }
 
