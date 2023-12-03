@@ -150,6 +150,6 @@ task TestWindowsPowershell Build, {
 }
 
 # Synopsis: Publish to PSGallery
-task Publish Clean, CSBuild, PSBuild, Test, TestWindowsPowershell, {
+task Publish CSBuild, PSBuild, Test, TestWindowsPowershell, {
     Publish-PSResource -Verbose -Path $ModuleBase -DestinationPath Build -Repository PSGallery -ApiKey $PSGalleryApiKey
 }
