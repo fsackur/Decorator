@@ -71,18 +71,13 @@ task Clean {
 
 # Synopsis: Build PS module at manifest version
 task PSBuild {
-    $ManifestContent = Get-Content $ManifestPath -Raw
-    $Manifest = Invoke-Expression "DATA {$ManifestContent}"
-    $Version = $Manifest.ModuleVersion
-    $BuildFolder = New-Item "$OutputFolder/$ModuleName/$Version" -ItemType Directory -Force
-
-    $RootModule = $Manifest.RootModule -replace '^$', "$ModuleName.psm1"
-    $BuiltRootModulePath = Join-Path $BuildFolder $RootModule
+    $null = New-Item $ModuleBase -ItemType Directory -Force
+    $RootModulePath = Join-Path $ModuleBase "$ModuleName.psm1"
 
     $Include |
         Where-Object {Test-Path $_} |
         Get-Item |
-        Copy-Item -Destination $BuildFolder
+        Copy-Item -Destination $ModuleBase -Recurse
 
     $PSScriptFolders |
         Where-Object {Test-Path $_} |
@@ -94,23 +89,18 @@ task PSBuild {
             ""
         } |
         Write-Output |
-        Out-File $BuiltRootModulePath -Append -Encoding utf8NoBOM
+        Out-File $RootModulePath -Append -Encoding utf8NoBOM
 }
 
 # Synopsis: Build C# project
 task CSBuild {
-    $ManifestContent = Get-Content $ManifestPath -Raw
-    $Manifest = Invoke-Expression "DATA {$ManifestContent}"
-    $Version = $Manifest.ModuleVersion
-    $BuildFolder = New-Item "$OutputFolder/$ModuleName/$Version" -ItemType Directory -Force
-
     dotnet build $CsProjPath --output $BinOutputFolder
 
     $BinInclude |
         ForEach-Object {Join-Path $BinOutputFolder $_} |
         Where-Object {Test-Path $_} |
         Get-Item |
-        Copy-Item -Destination $BuildFolder
+        Copy-Item -Destination $ModuleBase -Recurse
 }
 
 
@@ -142,8 +132,5 @@ task TestWindowsPowershell {
 
 # Synopsis: Publish to PSGallery
 task Publish Clean, PSBuild, CSBuild, Test, TestWindowsPowershell, {
-    $VersionedBase = Get-Module $ModuleBase -ListAvailable | ForEach-Object ModuleBase
-    Get-ChildItem $VersionedBase | Copy-Item -Destination $ModuleBase
-    remove $VersionedBase
     Publish-PSResource -Verbose -Path $ModuleBase -DestinationPath Build -Repository PSGallery -ApiKey $PSGalleryApiKey
 }
