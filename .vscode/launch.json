@@ -5,14 +5,32 @@
             "name": "PowerShell cmdlets: pwsh",
             "type": "coreclr",
             "request": "launch",
-            "preLaunchTask": "Build",
+            // "preLaunchTask": "Build",
             "program": "pwsh",
-            // "program": "C:/gitroot/PowerShell/debug/pwsh.exe",
             "args": [
                 "-NoExit",
                 "-NoProfile",
                 "-Command",
-                "ipmo ./Decr8r.psd1 -Force"
+                "ipmo ./Build/Decr8r -Force"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnFirstSessionStart",
+            "justMyCode": false,
+            "requireExactSource": false
+        },
+        {
+            "name": "Pester: pwsh",
+            "type": "coreclr",
+            "request": "launch",
+            // "preLaunchTask": "Build",
+            "program": "pwsh",
+            "args": [
+                "-NoExit",
+                "-NoProfile",
+                "-Command",
+                "ipmo ./Build/Decr8r -Force; Set-PSBreakpoint -Script ./tests/Decr8r.Tests.ps1 -Line 20; Invoke-Pester"
             ],
             "cwd": "${workspaceFolder}",
             "stopAtEntry": false,

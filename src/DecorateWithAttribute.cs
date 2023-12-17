@@ -88,7 +88,7 @@ namespace Decr8r
                 Command = invokeCommand.GetCommand(commandName, CommandTypes.All);
             }
 
-            var sessionState = Command.Module!.SessionState;
+            var sessionState = Command.Module?.SessionState;
             if (sessionState is null)
             {
                 executionContext ??= DecoratedCommand.Reflected.GetValue(debugger, "_context");

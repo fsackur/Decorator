@@ -264,5 +264,20 @@ namespace Decr8r
         {
             _pipeline!.End();
         }
+
+        public void Begin()
+        {
+            BeginProcessing();
+        }
+
+        public void Process(PSObject inputObject)
+        {
+            ProcessRecord();
+        }
+
+        public void End()
+        {
+            EndProcessing();
+        }
     }
 }

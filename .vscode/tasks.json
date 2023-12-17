@@ -41,10 +41,11 @@
         {
             "label": "Build",
             "type": "process",
-            "command": "dotnet",
+            "command": "pwsh",
             "args": [
-                "build",
-                "./src/Decr8r.csproj"
+                "-NoProfile",
+                "-Command",
+                "Invoke-Build CSBuild, PSBuild"
             ],
             "group": {
                 "kind": "build",
